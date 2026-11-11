@@ -3,66 +3,29 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>ADA // Cognition</title>
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%2303070d'/%3E%3Ccircle cx='32' cy='32' r='15' fill='none' stroke='%235ad1ff' stroke-width='4'/%3E%3Ccircle cx='32' cy='32' r='5' fill='%235ad1ff'/%3E%3C/svg%3E">
+  <title>Ada Orb</title>
   <link rel="stylesheet" href="/style.css">
 </head>
 <body data-state="idle">
-  <div class="app">
-    <header class="topbar">
-      <div class="brand">
-        <span class="brand-dot"></span>
-        <span class="brand-name">ADA</span>
-        <span class="brand-sub">LOCAL COGNITION</span>
-      </div>
-      <div class="telemetry">
-        <div class="telemetry-item">
-          <span class="label">STATE</span>
-          <span id="state-text">CONNECTING</span>
-        </div>
-        <div class="telemetry-item">
-          <span class="label">MODEL</span>
+  <main class="app" aria-label="Ada hologram and conversation">
+    <section class="orb-stage" aria-label="Ada status orb">
+      <canvas id="orb"></canvas>
+      <div class="hud">
+        <div id="state-label" class="state">IDLE</div>
+        <div id="state-detail" class="detail">awaiting input</div>
+        <div class="meta">
+          <span id="route-text">route —</span>
+          <span class="sep">•</span>
           <span id="model-text">—</span>
-        </div>
-        <div class="telemetry-item">
-          <span class="label">MEMORY</span>
-          <span id="memory-text">—</span>
-        </div>
-        <div class="telemetry-item">
-          <span class="label">LINK</span>
-          <span id="link-text" class="offline">OFFLINE</span>
+          <span class="sep">•</span>
+          <span id="link-text" class="offline">offline</span>
         </div>
       </div>
-    </header>
-
-    <main class="stage">
-      <section class="orb-wrap" aria-label="Ada activity orb">
-        <canvas id="orb"></canvas>
-        <div class="orb-caption">
-          <div id="state-label" class="state-label">IDLE</div>
-          <div id="state-detail" class="state-detail">awaiting input</div>
-        </div>
-      </section>
-
-      <aside class="rail">
-        <div class="rail-head">
-          <span>COGNITION STREAM</span>
-          <span id="event-count">0</span>
-        </div>
-        <div id="events" class="events"></div>
-      </aside>
-    </main>
-
-    <section class="console">
-      <div class="console-head">
-        <span>CONVERSATION</span>
-        <span id="latency">—</span>
-      </div>
-      <div id="messages" class="messages"></div>
     </section>
-  </div>
-
-  <noscript>This dashboard needs JavaScript.</noscript>
+    <aside class="chat" aria-label="Conversation transcript">
+      <div id="messages" class="messages" aria-live="polite"></div>
+    </aside>
+  </main>
   <script src="/app.js"></script>
 </body>
 </html>

@@ -12,6 +12,7 @@ import io
 import queue
 import re
 import threading
+import time
 import wave
 from collections import OrderedDict
 from pathlib import Path
@@ -133,13 +134,50 @@ class Speaker:
             _CACHE.popitem(last=False)
         return audio, rate
 
-    def speak(self, text: str) -> None:
+    def speak(self, text: str, stop_event: threading.Event | None = None) -> bool:
+        """Play audio. Returns False if interrupted."""
         import sounddevice as sd
 
         audio, rate = self.synthesize(text)
-        if audio.size:
-            sd.play(audio, rate, device=self.output_device)
+        if not audio.size:
+            return True
+
+        sd.play(audio, rate, device=self.output_device)
+        samples = None
+        try:
+            samples = audio.astype(np.float32) / 32768.0
+        except Exception:
+            samples = None
+        start = time.time()
+        while True:
+            try:
+                stream = sd.get_stream()
+                active = bool(stream and stream.active)
+            except Exception:
+                active = False
+            if stop_event and stop_event.is_set():
+                try:
+                    sd.stop()
+                except Exception:
+                    pass
+                emit("voice", action="level", level=0.0)
+                return False
+            if not active:
+                break
+            if samples is not None and rate:
+                idx = int((time.time() - start) * rate)
+                if 0 <= idx < len(samples):
+                    seg = samples[idx: idx + max(1, int(rate * 0.05))]
+                    if seg.size:
+                        level = float(np.sqrt(np.mean(seg * seg)))
+                        emit("voice", action="level", level=min(1.0, level * 6.0))
+            time.sleep(0.04)
+        try:
             sd.wait()
+        except Exception:
+            pass
+        emit("voice", action="level", level=0.0)
+        return not (stop_event and stop_event.is_set())
 
 
 class VoiceOutput:
@@ -148,12 +186,14 @@ class VoiceOutput:
     def __init__(self, speaker: Speaker):
         self.speaker = speaker
         self._queue: queue.Queue[str | None] = queue.Queue()
+        self._stop = threading.Event()
+        self.speaking = False
         self._worker = threading.Thread(target=self._run, daemon=True)
         self._worker.start()
 
     def feed(self, text: str) -> None:
         text = text.strip()
-        if text:
+        if text and not self._stop.is_set():
             self._queue.put(text)
 
     def _run(self) -> None:
@@ -162,10 +202,16 @@ class VoiceOutput:
             try:
                 if text is None:
                     return
+                if self._stop.is_set():
+                    continue
+                self.speaking = True
                 emit("voice", action="start", text=text)
                 try:
-                    self.speaker.speak(text)
+                    completed = self.speaker.speak(text, stop_event=self._stop)
+                    if not completed:
+                        self._stop.clear()
                 finally:
+                    self.speaking = False
                     emit("voice", action="end", text=text)
             except Exception as err:
                 print(f"\n[audio error] {type(err).__name__}: {err}")
@@ -175,19 +221,27 @@ class VoiceOutput:
     def wait(self) -> None:
         self._queue.join()
 
-    def stop(self) -> None:
+    def interrupt(self) -> None:
+        self._stop.set()
         try:
             import sounddevice as sd
 
             sd.stop()
         except Exception:
             pass
+        self.clear_pending()
+
+    def clear_pending(self) -> None:
         while True:
             try:
-                self._queue.get_nowait()
-                self._queue.task_done()
+                item = self._queue.get_nowait()
             except queue.Empty:
                 break
+            if item is not None:
+                self._queue.task_done()
+
+    def stop(self) -> None:
+        self.interrupt()
 
 
 def audition() -> None:

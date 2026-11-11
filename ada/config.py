@@ -26,6 +26,15 @@ DEEP_HINTS = (
     "analyze carefully",
     "work through",
     "step by step",
+    "learn",
+    "research",
+    "study",
+    "everything you can",
+    "all you can",
+    "in depth",
+    "in-depth",
+    "comprehensive",
+    "teach me",
 )
 
 
@@ -98,6 +107,7 @@ class Config:
     persona_file: str = str(ASSETS_DIR / "persona.md")
     memory_file: str = str(DATA_DIR / "memories.json")
     skills_dir: str = str(ASSETS_DIR / "skills")
+    coding_tools: bool = True
 
     web_enabled: bool = True
     web_host: str = "127.0.0.1"
@@ -110,6 +120,8 @@ class Config:
     stt_enabled: bool = True
     voice_input: bool = False
     hands_free: bool = False
+    flow_mode: bool = False
+    barge_in: bool = True
     require_wake_word: bool = True
     wake_words: list[str] = field(
         default_factory=lambda: [
@@ -122,9 +134,32 @@ class Config:
         ]
     )
     whisper_model: str = "base.en"
+    stt_beam_size: int = 5
+    stt_vad_filter: bool = True
+    stt_silence_seconds: float = 1.2
+    stt_max_seconds: float = 20.0
     input_device: str | None = None
 
     search_results: int = 5
+
+    # Home Assistant integration
+    ha_url: str | None = None
+    ha_token: str | None = None
+    ha_verify_ssl: bool = True
+    ha_notify_service: str | None = None  # e.g. notify.mobile_app_phone
+    ha_context_entity: str | None = None  # e.g. sensor.current_room or input_text.ada_location
+
+    # System / guardrails
+    reminders_file: str = str(DATA_DIR / "reminders.json")
+    allowed_paths: list[str] = field(default_factory=list)  # if set, restrict file/command cwd to these roots
+    confirm_dangerous_commands: bool = False
+    command_allowlist: list[str] = field(default_factory=list)
+
+    # Learning
+    learn_depth: str = "deep"  # quick | deep
+
+    # Workspace
+    workspace: str | None = None
 
     @classmethod
     def load(cls) -> "Config":
@@ -172,12 +207,13 @@ class Config:
         return cls(**clean)
 
     def choose_model(self, text: str) -> str:
-        if not self.auto_route or self.fast_model == self.model:
+        if self.fast_model == self.model:
             return self.fast_model
         low = text.lower()
-        if len(text) > 320 or low.count("?") >= 2:
-            return self.model
-        if any(hint in low for hint in DEEP_HINTS):
+        force_deep = any(hint in low for hint in DEEP_HINTS)
+        if not self.auto_route:
+            return self.model if force_deep else self.fast_model
+        if len(text) > 320 or low.count("?") >= 2 or force_deep:
             return self.model
         return self.fast_model
 

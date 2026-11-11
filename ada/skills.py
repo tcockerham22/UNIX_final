@@ -32,6 +32,8 @@ class Skill:
     name: str
     description: str
     path: Path
+    updated: float = 0.0
+    sources: list[str] | None = None
 
 
 class SkillStore:
@@ -48,10 +50,12 @@ class SkillStore:
         return slug[:64] or "skill"
 
     @staticmethod
-    def _parse(path: Path) -> tuple[str, str, str]:
+    def _parse(path: Path) -> tuple[str, str, str, float, list[str]]:
         text = path.read_text(encoding="utf-8", errors="replace")
         name = ""
         description = ""
+        updated = 0.0
+        sources: list[str] = []
         body = text
         match = FRONT_MATTER.match(text)
         if match:
@@ -66,6 +70,19 @@ class SkillStore:
                     name = value
                 elif key == "description":
                     description = value
+                elif key == "updated":
+                    try:
+                        updated = float(value)
+                    except ValueError:
+                        updated = 0.0
+                elif key == "sources":
+                    # simple comma/semicolon separated list
+                    sources = [s.strip() for s in re.split(r"[;,]", value) if s.strip()]
+        if not updated:
+            try:
+                updated = path.stat().st_mtime
+            except OSError:
+                updated = 0.0
         if not name:
             heading = re.search(r"^#\s+(.+)$", body, flags=re.MULTILINE)
             if heading:
@@ -78,7 +95,7 @@ class SkillStore:
                 if stripped and not stripped.startswith(("#", "---", ">")):
                     description = stripped
                     break
-        return name, description, body.strip()
+        return name, description, body.strip(), updated, sources
 
     def _files(self) -> list[Path]:
         return sorted(path for path in self.directory.glob("*.md") if path.is_file())
@@ -86,9 +103,21 @@ class SkillStore:
     def list(self) -> list[Skill]:
         skills = []
         for path in self._files():
-            name, description, _ = self._parse(path)
-            skills.append(Skill(name=name, description=description, path=path))
+            name, description, _, updated, sources = self._parse(path)
+            skills.append(Skill(name=name, description=description, path=path, updated=updated, sources=sources))
         return sorted(skills, key=lambda skill: skill.name.lower())
+
+    def list_info(self) -> list[dict]:
+        items = []
+        for s in self.list():
+            items.append({
+                "name": s.name,
+                "description": s.description,
+                "updated": s.updated,
+                "sources": s.sources or [],
+                "path": str(s.path),
+            })
+        return items
 
     def index(self, limit: int = 40) -> str:
         skills = self.list()
@@ -112,12 +141,12 @@ class SkillStore:
         for skill in self.list():
             keys = {skill.name.lower(), skill.path.stem.lower(), self.slugify(skill.name)}
             if needle in keys:
-                _, _, body = self._parse(skill.path)
-                return skill.name, body
+                n, _, body, _, _ = self._parse(skill.path)
+                return n, body
         for skill in self.list():
             if needle in skill.name.lower() or needle in skill.path.stem.lower():
-                _, _, body = self._parse(skill.path)
-                return skill.name, body
+                n, _, body, _, _ = self._parse(skill.path)
+                return n, body
         return None
 
     def save(
@@ -126,7 +155,9 @@ class SkillStore:
         description: str,
         instructions: str,
         replace: bool = False,
+        sources: list[str] | None = None,
     ) -> str:
+        import time as _time
         name = " ".join(name.split()).strip()
         description = " ".join(description.split()).strip()
         instructions = instructions.strip()
@@ -135,10 +166,49 @@ class SkillStore:
         if not instructions:
             raise ValueError("skill instructions are required")
 
+        low = instructions.lower()
+        bad_phrases = [
+            "web_search",
+            "web_fetch",
+            "find reliable sources",
+            "save relevant information",
+            "research basics",
+            "research it",
+            "gather reliable facts",
+            "synthesize what you learned",
+            "go and research",
+            "stay updated",
+            "learn more about",
+            "learn everything about",
+            "learn all you can",
+            "research different types",
+            "research everything",
+            "document the most common",
+            "create a comprehensive guide",
+            "create a guide",
+            "and document",
+            "read_skill for specific skills",
+        ]
+        meta_hits = sum(1 for p in bad_phrases if p in low)
+        # also catch plans/meta-instructions without real substance
+        starts_meta = low.lstrip("# ").startswith(("learn ", "research ", "study ", "document ", "create ", "gather "))
+        lines = [ln.strip() for ln in instructions.splitlines() if ln.strip()]
+        has_structure = sum(1 for ln in lines if ln.startswith(("-", "*", "1.", "2.", "3.", "#"))) >= 2
+        substantive = (len(instructions) >= 220 and (len(lines) >= 4 or has_structure or ":" in instructions or ";" in instructions))
+        too_short = len(instructions) < 220
+        too_meta = (meta_hits >= 1 and len(instructions) < 900) or (starts_meta and meta_hits >= 1 and len(instructions) < 1200)
+        if too_short or too_meta or (not substantive and len(instructions) < 500):
+            raise ValueError(
+                "skill instructions are too vague or meta. First use web_search/web_fetch to gather facts, then call save_skill "
+                "again with the actual learned content itself: key concepts/definitions, how it works, concrete steps/examples/commands, "
+                "protocols/components, use cases, and limitations/pitfalls. Do not tell a future reader to search, fetch, research, or create a guide; "
+                "write the knowledge (aim for substantial, detailed, useful notes)."
+            )
+
         slug = self.slugify(name)
         path = self.directory / f"{slug}.md"
         if path.exists():
-            existing_name, _, _ = self._parse(path)
+            existing_name, _, _, _, _ = self._parse(path)
             if existing_name.lower() != name.lower():
                 suffix = hashlib.sha1(name.encode("utf-8")).hexdigest()[:6]
                 path = self.directory / f"{slug}-{suffix}.md"
@@ -149,7 +219,12 @@ class SkillStore:
             path.write_text(f"{existing}\n\n{instructions}\n", encoding="utf-8")
             return f"Appended to skill '{name}'."
 
-        front = f"---\nname: {name}\ndescription: {description}\n---\n\n"
+        src_line = ""
+        if sources:
+            clean = [s.strip() for s in sources if s and s.strip()][:8]
+            if clean:
+                src_line = f"sources: {', '.join(clean)}\n"
+        front = f"---\nname: {name}\ndescription: {description}\nupdated: {_time.time():.0f}\n{src_line}---\n\n"
         body = instructions if instructions.lstrip().startswith("#") else f"# {name}\n\n{instructions}"
         path.write_text(front + body.rstrip() + "\n", encoding="utf-8")
         return f"Replaced skill '{name}'." if existed else f"Saved skill '{name}'."
