@@ -88,7 +88,15 @@ class SentenceSplitter:
 
 
 class Speaker:
-    def __init__(self, voice_name: str | None = None, output_device=None):
+    def __init__(
+        self,
+        voice_name: str | None = None,
+        output_device=None,
+        length_scale: float | None = None,
+        noise_scale: float | None = None,
+        noise_w: float | None = None,
+        sentence_silence: float = 0.15,
+    ):
         from piper import PiperVoice
 
         name = voice_name or DEFAULT_VOICE
@@ -100,6 +108,10 @@ class Speaker:
         self.name = name
         self.voice = PiperVoice.load(str(model))
         self.output_device = resolve_device(output_device)
+        self.length_scale = length_scale
+        self.noise_scale = noise_scale
+        self.noise_w = noise_w
+        self.sentence_silence = sentence_silence
         if self.output_device is not None:
             import sounddevice as sd
 
@@ -109,12 +121,26 @@ class Speaker:
                 print(f"[voice] output device unavailable ({err}); using default.")
                 self.output_device = None
 
+    def _syn_config(self):
+        try:
+            from piper.config import SynthesisConfig
+        except Exception:
+            return None
+        try:
+            return SynthesisConfig(
+                length_scale=self.length_scale,
+                noise_scale=self.noise_scale,
+                noise_w_scale=self.noise_w,
+            )
+        except Exception:
+            return None
+
     def synthesize(self, text: str) -> tuple[np.ndarray, int]:
         cleaned = clean_for_speech(text)
         if not cleaned:
             return np.zeros(0, dtype=np.int16), 22050
 
-        key = (self.name, cleaned)
+        key = (self.name, cleaned, self.length_scale, self.noise_scale, self.noise_w)
         cached = _CACHE.get(key)
         if cached is not None:
             _CACHE.move_to_end(key)
@@ -122,12 +148,21 @@ class Speaker:
 
         buffer = io.BytesIO()
         with wave.open(buffer, "wb") as wav_file:
-            self.voice.synthesize_wav(cleaned, wav_file)
+            syn_config = self._syn_config()
+            if syn_config is not None:
+                self.voice.synthesize_wav(cleaned, wav_file, syn_config=syn_config)
+            else:
+                self.voice.synthesize_wav(cleaned, wav_file)
         with wave.open(io.BytesIO(buffer.getvalue())) as wav_file:
             rate = wav_file.getframerate()
             audio = np.frombuffer(
                 wav_file.readframes(wav_file.getnframes()), dtype=np.int16
             ).copy()
+
+        # optional short trailing silence for smoother cadence between chunks
+        if self.sentence_silence and rate and audio.size:
+            pad = np.zeros(int(rate * max(0.0, float(self.sentence_silence))), dtype=np.int16)
+            audio = np.concatenate([audio, pad])
 
         _CACHE[key] = (audio, rate)
         while len(_CACHE) > _CACHE_LIMIT:

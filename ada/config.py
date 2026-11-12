@@ -37,6 +37,24 @@ DEEP_HINTS = (
     "teach me",
 )
 
+MODERATE_HINTS = (
+    "explain",
+    "compare",
+    "summarize",
+    "summary",
+    "help me",
+    "how do i",
+    "how to",
+    "plan",
+    "write",
+    "draft",
+    "debug",
+    "fix",
+    "code",
+    "implement",
+    "refactor",
+)
+
 
 def _as_bool(value) -> bool:
     if isinstance(value, bool):
@@ -94,15 +112,22 @@ class Config:
     user_name: str = "Sam"
     sensitive_note: str = "This includes the garage door."
 
-    model: str = "llama3.1:8b"
-    fast_model: str = "qwen2.5:3b"
+    # 3-tier models: light / moderate / deep
+    light_model: str = "qwen2.5:4b-instruct"
+    moderate_model: str = "qwen2.5:7b-instruct"
+    deep_model: str = "qwen2.5:14b-instruct"
+    # backward-compat aliases
+    model: str = "qwen2.5:14b-instruct"
+    fast_model: str = "qwen2.5:4b-instruct"
     auto_route: bool = False
     auto_tools: bool = False
     keep_alive: str = "10m"
     num_ctx: int = 4096
     temperature: float = 0.7
-    quick_max_tokens: int = 160
-    deep_max_tokens: int = 350
+    light_max_tokens: int = 220
+    moderate_max_tokens: int = 700
+    quick_max_tokens: int = 220
+    deep_max_tokens: int = 2048
 
     persona_file: str = str(ASSETS_DIR / "persona.md")
     memory_file: str = str(DATA_DIR / "memories.json")
@@ -116,6 +141,10 @@ class Config:
     speak: bool = True
     voice: str = "en_GB-cori-medium"
     output_device: str | None = None
+    voice_length_scale: float = 1.02
+    voice_noise_scale: float = 0.4
+    voice_noise_w: float = 0.7
+    voice_sentence_silence: float = 0.12
 
     stt_enabled: bool = True
     voice_input: bool = False
@@ -197,6 +226,14 @@ class Config:
         if legacy_wake and "ADA_WAKE_WORDS" not in os.environ:
             data["wake_words"] = _as_list(legacy_wake, defaults["wake_words"])
 
+        # backward-compat mapping
+        if "fast_model" in data and "light_model" not in data:
+            data["light_model"] = data["fast_model"]
+        if "model" in data and "deep_model" not in data:
+            data["deep_model"] = data["model"]
+        if "quick_max_tokens" in data and "light_max_tokens" not in data:
+            data["light_max_tokens"] = data["quick_max_tokens"]
+
         clean = {}
         for key, value in data.items():
             if key not in defaults:
@@ -204,20 +241,53 @@ class Config:
             if value is None and defaults[key] is not None:
                 continue
             clean[key] = value
-        return cls(**clean)
+        cfg = cls(**clean)
+        # keep aliases in sync
+        cfg.fast_model = cfg.light_model
+        cfg.model = cfg.deep_model
+        cfg.quick_max_tokens = cfg.light_max_tokens
+        return cfg
+
+    @property
+    def models(self) -> dict:
+        return {"light": self.light_model, "moderate": self.moderate_model, "deep": self.deep_model}
 
     def choose_model(self, text: str) -> str:
-        if self.fast_model == self.model:
-            return self.fast_model
-        low = text.lower()
+        low = (text or "").lower()
         force_deep = any(hint in low for hint in DEEP_HINTS)
+        wants_moderate = any(hint in low for hint in MODERATE_HINTS)
         if not self.auto_route:
-            return self.model if force_deep else self.fast_model
-        if len(text) > 320 or low.count("?") >= 2 or force_deep:
-            return self.model
-        return self.fast_model
+            if force_deep:
+                return self.deep_model
+            if wants_moderate or len(text) > 180:
+                return self.moderate_model
+            return self.light_model
+        # auto routing by complexity
+        if force_deep or len(text) > 420 or low.count("?") >= 3:
+            return self.deep_model
+        if wants_moderate or len(text) > 140 or low.count("?") >= 2 or "\n" in text:
+            return self.moderate_model
+        return self.light_model
 
     def model_label(self, model: str) -> str:
-        if model == self.fast_model:
-            return "quick"
-        return "deep"
+        if model == self.deep_model:
+            return "deep"
+        if model == self.moderate_model:
+            return "moderate"
+        if model == self.light_model:
+            return "light"
+        # fallback by size hints
+        m = (model or "").lower()
+        if "14" in m or "deep" in m:
+            return "deep"
+        if "7" in m or "moderate" in m or "medium" in m:
+            return "moderate"
+        return "light"
+
+    def max_tokens_for(self, model: str) -> int:
+        label = self.model_label(model)
+        if label == "deep":
+            return self.deep_max_tokens
+        if label == "moderate":
+            return self.moderate_max_tokens
+        return self.light_max_tokens

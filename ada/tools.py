@@ -117,6 +117,27 @@ def _reminder_loop():
             emit("assistant", text=f"Reminder: {msg}")
 
 
+def ada_info(config: "Config") -> str:
+    try:
+        root = Path(__file__).resolve().parent.parent
+        cwd = Path.cwd().resolve()
+        info = {
+            "cwd": str(cwd),
+            "ada_root": str(root),
+            "config_file": str(getattr(config, "config_path", "") or os.environ.get("ADA_CONFIG", root / "config.json")),
+            "persona_file": str(getattr(config, "persona_file", root / "assets" / "persona.txt")),
+            "skills_dir": str(getattr(config, "skills_dir", root / "assets" / "skills")),
+            "memory_file": str(getattr(config, "memory_file", root / "data" / "memories.json")),
+            "reminders_file": str(getattr(config, "reminders_file", root / "data" / "reminders.json")),
+            "workspace": str(getattr(config, "workspace", None) or cwd),
+            "allowed_paths": list(getattr(config, "allowed_paths", []) or []),
+            "confirm_dangerous_commands": bool(getattr(config, "confirm_dangerous_commands", False)),
+        }
+        return json.dumps(info, indent=2)
+    except Exception as err:
+        return f"ERROR: could not get ada info ({type(err).__name__}: {err})."
+
+
 def ensure_reminders(config: "Config") -> None:
     global _REMINDERS_PATH, _REMINDER_THREAD
     path = Path(config.reminders_file)
@@ -882,6 +903,7 @@ TOOLS = [
     {"type": "function", "function": {"name": "list_reminders", "description": "List pending reminders.", "parameters": {"type": "object", "properties": {}}}},
     {"type": "function", "function": {"name": "remove_reminder", "description": "Remove a reminder by id or matching text.", "parameters": {"type": "object", "properties": {"reminder_id": {"type": "string"}}, "required": ["reminder_id"]}}},
     {"type": "function", "function": {"name": "send_notification", "description": "Send a notification (locally and via Home Assistant notify service if configured).", "parameters": {"type": "object", "properties": {"message": {"type": "string"}, "title": {"type": "string"}}, "required": ["message"]}}},
+    {"type": "function", "function": {"name": "ada_info", "description": "Get information about Ada's own environment and paths (project root, config, persona, skills, memory, workspace). Use this when asked to improve/modify Ada itself or to understand where Ada runs.", "parameters": {"type": "object", "properties": {}}}},
 ]
 
 
@@ -1000,6 +1022,8 @@ def run_tool(name: str, args: dict, memory: "Memory", config: "Config") -> str:
             return remove_reminder(str(args.get("reminder_id", "")), config)
         if name == "send_notification":
             return send_notification(str(args.get("message", "")), config, str(args.get("title", "Ada")))
+        if name == "ada_info":
+            return ada_info(config)
         return f"ERROR: unknown tool {name!r}."
     except Exception as err:
         return f"ERROR: {name} failed ({type(err).__name__}: {err})."

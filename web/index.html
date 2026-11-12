@@ -7,24 +7,20 @@
   <link rel="stylesheet" href="/style.css">
 </head>
 <body data-state="idle">
-  <main class="app" aria-label="Ada hologram and conversation">
-    <section class="orb-stage" aria-label="Ada status orb">
-      <canvas id="orb"></canvas>
-      <div class="hud">
-        <div id="state-label" class="state">IDLE</div>
-        <div id="state-detail" class="detail">awaiting input</div>
-        <div class="meta">
-          <span id="route-text">route —</span>
-          <span class="sep">•</span>
-          <span id="model-text">—</span>
-          <span class="sep">•</span>
-          <span id="link-text" class="offline">offline</span>
-        </div>
+  <main class="holo" aria-label="Ada holographic display">
+    <canvas id="orb"></canvas>
+    <div class="hud">
+      <div id="state-label" class="state">IDLE</div>
+      <div id="state-detail" class="detail">awaiting input</div>
+      <div class="meta">
+        <span id="route-text">route —</span>
+        <span class="sep">•</span>
+        <span id="model-text">—</span>
+        <span class="sep">•</span>
+        <span id="link-text" class="offline">offline</span>
       </div>
-    </section>
-    <aside class="chat" aria-label="Conversation transcript">
-      <div id="messages" class="messages" aria-live="polite"></div>
-    </aside>
+      <div class="tiers" id="tiers-text">light · moderate · deep</div>
+    </div>
   </main>
   <script src="/app.js"></script>
 </body>

@@ -26,7 +26,7 @@ TOOL_HINTS = re.compile(
     r"price|prices|cost|stocks?|shares?|market|score|scores?|won|winner|match|game|election|"
     r"release[ds]?|version|update|search|google|look up|find out|online|website|url|link|"
     r"wikipedia|population|exchange rate|how much|how many people|what time|time is it|"
-    r"date is it|remember|forget|don't forget|keep in mind|"
+    r"date is it|remember|memorize|memorise|forget|don't forget|keep in mind|commit .*memory|commit .*to memory|save .*to memory|store .*in memory|add .*to memory|note that|"
     r"learn|skill|skills|save skill|teach you|study|"
     r"code|coding|program|script|function|class|bug|debug|fix|implement|refactor|"
     r"file|folder|directory|read|write|edit|create|run|execute|command|terminal|shell|"
@@ -51,6 +51,33 @@ LEARN_ANYWHERE = re.compile(
     re.IGNORECASE,
 )
 SAVE_SKILL_REQUEST = re.compile(r"\b(?:save|create|make|add)\b.*\b(?:skill|scale)\b", re.IGNORECASE)
+
+REMEMBER_REQUEST = re.compile(
+    r"^\s*(?:hey\s+\w+[,\s]+|hi\s+\w+[,\s]+|okay\s+\w+[,\s]+|ada[,\s]+)?"
+    r"(?:please\s+)?(?:can you\s+|could you\s+|would you\s+)?"
+    r"(?:remember(?:\s+that)?|memorize|memorise|commit\s+(?:this\s+)?to\s+memory(?:\s+that)?|"
+    r"save\s+(?:this\s+)?to\s+memory(?:\s+that)?|store\s+(?:this\s+)?in\s+memory(?:\s+that)?|"
+    r"add\s+(?:this\s+)?to\s+memory(?:\s+that)?|keep\s+in\s+mind(?:\s+that)?|note\s+that|don't\s+forget(?:\s+that)?)\s+(.+)$",
+    re.IGNORECASE,
+)
+
+
+def extract_remember_fact(text: str) -> str | None:
+    t = (text or "").strip()
+    if not t:
+        return None
+    # avoid confusing "remember how to..." instructions as a fact to store
+    if re.match(r"^\s*(?:remember|memorize|memorise)\s+how\b", t, re.IGNORECASE):
+        return None
+    m = REMEMBER_REQUEST.match(t)
+    if not m:
+        return None
+    fact = m.group(1).strip().strip(".!? ")
+    fact = re.sub(r"^(that|this)\s+", "", fact, flags=re.IGNORECASE).strip()
+    # require some substance
+    if len(fact) < 3:
+        return None
+    return fact
 
 
 def extract_learn_topic(text: str) -> str | None:
@@ -87,7 +114,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--no-speak", action="store_true", help="text only, no spoken replies")
     parser.add_argument("--no-tools", action="store_true", help="disable web and memory tools")
     parser.add_argument("--model", help="override the deep model")
-    parser.add_argument("--fast-model", help="override the fast model")
+    parser.add_argument("--fast-model", help="override the light/fast model")
+    parser.add_argument("--light-model", help="override the light model")
+    parser.add_argument("--moderate-model", help="override the moderate model")
+    parser.add_argument("--deep-model", help="override the deep model")
     parser.add_argument("--warmup", action="store_true", help="preload models and speech recognition, then exit")
     parser.add_argument("--no-web", action="store_true", help="disable the local web dashboard")
     parser.add_argument("--web-port", type=int, help="override the dashboard port")
@@ -117,21 +147,27 @@ def build_system_prompt(config: Config, memory: Memory, tools_enabled: bool) -> 
         for tool in tool_mod.TOOLS:
             fn = tool["function"]
             prompt += f"- {fn['name']}: {fn['description']}\n"
+        cwd = Path.cwd().resolve()
         prompt += (
-            "Use tools when needed for current information, actions, memory, skills, files, or coding. "
+            f"Current working directory: {cwd}\n"
+            "Use tools proactively when needed for current information, actions, memory, skills, files, coding, or system tasks. "
             "For weather call get_weather. For exact time call current_time. "
-            "You can read, write, list, and run commands on the user's system to help with coding and tasks, including creating projects and files. "
-            "When asked to create a project, make a directory (make_directory) if needed, then write files (write_file), and use run_command for setup/build/test/init steps (e.g. git init, package installs) as appropriate. "
-            "When asked to create or write a program/script, you MUST call write_file to create the file(s) before running or compiling them. Do not only show code in chat and do not run commands on files you have not written yet. "
-            "After writing, use run_command to compile/run/test and report the actual output. "
-            "Prefer inspecting existing files/directories first and follow existing project conventions. "
-            "Do not read URLs aloud; name the source briefly. When you learn a lasting fact or preference, call remember. "
-            "Call forget when asked to forget something.\n"
+            "You can read, write, edit, list, search, and run commands on the user's system. "
+            "When asked to create, make, or build something (a script, app, project, config, folder, etc.), do it on the system: choose a sensible path in the current workspace unless the user specifies one, create directories as needed, write/edit the actual files, and run relevant setup/build/test commands. "
+            "Do not only describe or show code when the user expects it created—actually create it. "
+            "When asked to create or write a program/script, you MUST call write_file to create the file(s) before running or compiling them. After writing, use run_command to compile/run/test when appropriate and report the actual result. "
+            "When asked to improve, fix, or modify yourself (Ada), you may and should modify your own project files when that is what the user wants: use ada_info/workspace_info to locate paths, inspect existing code/config/skills/persona, then edit_file/write_file/run_command as needed, validate changes when possible (e.g. syntax checks/tests), and clearly explain what you changed. Preserve working behavior unless asked otherwise. "
+            "Prefer inspecting existing files/directories and following existing project conventions before changing things. "
+            "Do not read URLs aloud; name the source briefly. "
+            "If the user asks you to remember, memorize, save/commit/store something to memory, or keep something in mind, "
+            "you MUST call the remember tool with the exact fact (choose an appropriate category when obvious) and confirm briefly. "
+            "If the user asks to forget something, you MUST call forget. "
+            "When you learn a lasting fact or preference unprompted, you may call remember.\n"
         )
         prompt += (
-            "IMPORTANT: Call tools when the latest message needs them (current info, memory, skills, files, coding, commands). "
+            "IMPORTANT: Call tools when the latest message needs them (current info, memory, skills, files, coding, commands, self-improvement, creating things). "
             "Do not use tools for simple greetings, thanks, or small talk. Do not repeat a tool call from an earlier turn "
-            "unless the new message asks for it. If a fetch fails, try another source instead of retrying the same URL.\n"
+            "unless the new message asks for it. If a fetch or command fails, try a reasonable alternative instead of repeating the same failing call.\n"
         )
         skills = SkillStore(config.skills_dir)
         prompt += "\n## Skills\n"
@@ -169,7 +205,7 @@ def stream_reply(config: Config, history: list[dict], memory: Memory, model: str
     options = {
         "temperature": config.temperature,
         "num_ctx": config.num_ctx,
-        "num_predict": (
+        "num_predict": config.max_tokens_for(model) if hasattr(config, "max_tokens_for") else (
             config.quick_max_tokens if model == config.fast_model else config.deep_max_tokens
         ),
     }
@@ -186,7 +222,7 @@ def stream_reply(config: Config, history: list[dict], memory: Memory, model: str
 
         emit("state", state="thinking", detail=f"{config.model_label(model)} · {model}")
         print("[thinking...]", end="\r", flush=True)
-        stream = ollama.chat(
+        chat_kwargs = dict(
             model=model,
             messages=history,
             tools=tools,
@@ -194,6 +230,9 @@ def stream_reply(config: Config, history: list[dict], memory: Memory, model: str
             options=options,
             keep_alive=config.keep_alive,
         )
+        if "qwen3" in (model or "").lower():
+            chat_kwargs["think"] = False
+        stream = ollama.chat(**chat_kwargs)
         printing = False
         for chunk in stream:
             message = chunk["message"]
@@ -215,6 +254,14 @@ def stream_reply(config: Config, history: list[dict], memory: Memory, model: str
         if printing:
             print()
         content = "".join(content_parts).strip()
+        if not content and not calls:
+            # fallback: some reasoning models may return text in thinking
+            try:
+                thinking = message.get("thinking") or ""
+            except Exception:
+                thinking = ""
+            if isinstance(thinking, str) and thinking.strip():
+                content = thinking.strip()
 
         if splitter:
             for sentence in splitter.flush():
@@ -253,10 +300,11 @@ def trim_history(history: list[dict]) -> None:
 
 def warm_model(config: Config, memory: Memory, tools_enabled: bool = True) -> bool:
     """Load the model and prime its prompt cache with the real system prompt."""
-    emit("state", state="warming", detail=config.fast_model)
+    warm = getattr(config, "light_model", None) or config.fast_model
+    emit("state", state="warming", detail=warm)
     try:
-        ollama.chat(
-            model=config.fast_model,
+        warm_kwargs = dict(
+            model=warm,
             messages=[
                 {"role": "system", "content": build_system_prompt(config, memory, tools_enabled)},
                 {"role": "user", "content": "Hello"},
@@ -265,6 +313,9 @@ def warm_model(config: Config, memory: Memory, tools_enabled: bool = True) -> bo
             options={"num_predict": 1, "num_ctx": config.num_ctx},
             keep_alive=config.keep_alive,
         )
+        if "qwen3" in (warm or "").lower():
+            warm_kwargs["think"] = False
+        ollama.chat(**warm_kwargs)
         emit("state", state="idle", detail="model ready")
         return True
     except Exception as err:
@@ -279,7 +330,14 @@ def make_voice(config: Config):
     try:
         from .voice import Speaker, VoiceOutput
 
-        speaker = Speaker(config.voice, config.output_device)
+        speaker = Speaker(
+            config.voice,
+            config.output_device,
+            length_scale=getattr(config, "voice_length_scale", None),
+            noise_scale=getattr(config, "voice_noise_scale", None),
+            noise_w=getattr(config, "voice_noise_w", None),
+            sentence_silence=getattr(config, "voice_sentence_silence", 0.15),
+        )
         return speaker, VoiceOutput(speaker)
     except Exception as err:
         print(f"[voice] OFF - {type(err).__name__}: {err}")
@@ -378,16 +436,29 @@ def respond(user_text: str, config: Config, history: list[dict], memory: Memory,
     label = config.model_label(model)
     if label == "deep":
         label = "deep, slower"
+    elif label == "moderate":
+        label = "moderate"
+    else:
+        label = "light"
     print(f"[{label}] {model}{'' if use_tools else ' (no tools)'}", flush=True)
     tried_fallback = False
     try:
         reply = stream_reply(config, history, memory, model, use_tools, voice_out)
     except Exception as err:
-        if model != config.fast_model and not tried_fallback:
+        # fallback chain: deep -> moderate -> light
+        chain = [getattr(config, "deep_model", config.model), getattr(config, "moderate_model", config.fast_model), getattr(config, "light_model", config.fast_model)]
+        fallback = None
+        if model in chain:
+            idx = chain.index(model)
+            if idx + 1 < len(chain):
+                fallback = chain[idx + 1]
+        if fallback is None:
+            fallback = getattr(config, "light_model", config.fast_model)
+        if model != fallback and not tried_fallback:
             tried_fallback = True
-            emit("error", message=f"{model} unavailable, falling back to {config.fast_model}: {type(err).__name__}: {err}")
-            print(f"\n[model] {model} unavailable, falling back to {config.fast_model}", flush=True)
-            model = config.fast_model
+            emit("error", message=f"{model} unavailable, falling back to {fallback}: {type(err).__name__}: {err}")
+            print(f"\n[model] {model} unavailable, falling back to {fallback}", flush=True)
+            model = fallback
             use_tools = tools_enabled and (not config.auto_tools or needs_tools(user_text))
             history[0]["content"] = build_system_prompt(config, memory, use_tools)
             try:
@@ -522,10 +593,10 @@ def learn_skill(topic: str, config: Config, voice_out=None) -> str:
         "limitations/pitfalls, and best practices. Use headings and bullet points where helpful.\n\n"
         f"SOURCE MATERIAL:\n{material}"
     )
-    model = config.model if not quick else (config.fast_model if getattr(config, "fast_model", None) else config.model)
-    # prefer deeper model for deep learning when available
-    if not quick:
-        model = config.model
+    if quick:
+        model = getattr(config, "moderate_model", config.fast_model)
+    else:
+        model = getattr(config, "deep_model", config.model)
     try:
         resp = ollama.chat(
             model=model,
@@ -534,18 +605,25 @@ def learn_skill(topic: str, config: Config, voice_out=None) -> str:
             keep_alive=config.keep_alive,
         )
     except Exception as err:
-        fallback = config.fast_model if model != config.fast_model else config.model
-        try:
-            resp = ollama.chat(
-                model=fallback,
-                messages=[{"role": "user", "content": prompt}],
-                options={"temperature": 0.2, "num_ctx": config.num_ctx, "num_predict": min(predict, 1400)},
-                keep_alive=config.keep_alive,
-            )
-            model = fallback
-        except Exception as err2:
+        fallbacks = [getattr(config, "moderate_model", None), getattr(config, "light_model", None), config.fast_model]
+        resp = None
+        for fb in fallbacks:
+            if not fb or fb == model:
+                continue
+            try:
+                resp = ollama.chat(
+                    model=fb,
+                    messages=[{"role": "user", "content": prompt}],
+                    options={"temperature": 0.2, "num_ctx": config.num_ctx, "num_predict": min(predict, 1400)},
+                    keep_alive=config.keep_alive,
+                )
+                model = fb
+                break
+            except Exception:
+                continue
+        if resp is None:
             emit("state", state="idle", detail="learning failed")
-            return f"ERROR: learning failed ({type(err2).__name__}: {err2})."
+            return f"ERROR: learning failed ({type(err).__name__}: {err})."
 
     text = (resp.get("message", {}) or {}).get("content", "").strip()
     name = topic.title()
@@ -588,6 +666,9 @@ def learn_skill(topic: str, config: Config, voice_out=None) -> str:
 
 
 def print_help(config: Config, tools_enabled: bool) -> None:
+    light = getattr(config, "light_model", config.fast_model)
+    mod = getattr(config, "moderate_model", config.fast_model)
+    deep = getattr(config, "deep_model", config.model)
     print(
         f"""Commands:
   /listen            speak instead of typing
@@ -598,8 +679,10 @@ def print_help(config: Config, tools_enabled: bool) -> None:
   /skill <name>      show a saved skill
   /learn <topic>     research and save a new skill
   /say <text>        test the voice
-  /deep <text>       force the deep model ({config.model})
-  /fast <text>       force the quick model ({config.fast_model})
+  /light <text>      force light model ({light})
+  /moderate <text>   force moderate model ({mod})
+  /deep <text>       force deep model ({deep})
+  /fast <text>       alias for /light
   /model             show routing status
   /help              this list
   /quit              exit
@@ -669,10 +752,13 @@ def chat_loop(config: Config, history: list[dict], memory: Memory, speaker,
             emit("assistant", text=result)
             continue
         if line == "/model":
+            light = getattr(config, "light_model", config.fast_model)
+            mod = getattr(config, "moderate_model", config.fast_model)
+            deep = getattr(config, "deep_model", config.model)
             if config.auto_route:
-                print(f"quick: {config.fast_model}  deep: {config.model}  (auto)")
+                print(f"light: {light}  moderate: {mod}  deep: {deep}  (auto)")
             else:
-                print(f"default: {config.fast_model}  deep: {config.model}  (use /deep to switch)")
+                print(f"light: {light}  moderate: {mod}  deep: {deep}  (manual hints/commands)")
             continue
         if line == "/remember" or line.startswith("/remember "):
             fact = re.sub(r"^(that|about)\s+", "", line[len("/remember"):].strip(), flags=re.I)
@@ -704,14 +790,41 @@ def chat_loop(config: Config, history: list[dict], memory: Memory, speaker,
             if not text:
                 print("Usage: /deep <text>")
                 continue
-            respond(text, config, history, memory, voice_out, tools_enabled, config.model)
+            respond(text, config, history, memory, voice_out, tools_enabled, getattr(config, "deep_model", config.model))
+            continue
+        if line in {"/moderate", "/mid"} or line.startswith("/moderate ") or line.startswith("/mid "):
+            prefix = "/moderate" if line.startswith("/moderate") else "/mid"
+            text = line[len(prefix):].strip()
+            if not text:
+                print("Usage: /moderate <text>")
+                continue
+            respond(text, config, history, memory, voice_out, tools_enabled, getattr(config, "moderate_model", config.fast_model))
+            continue
+        if line == "/light" or line.startswith("/light "):
+            text = line[len("/light"):].strip()
+            if not text:
+                print("Usage: /light <text>")
+                continue
+            respond(text, config, history, memory, voice_out, tools_enabled, getattr(config, "light_model", config.fast_model))
             continue
         if line == "/fast" or line.startswith("/fast "):
             text = line[len("/fast"):].strip()
             if not text:
                 print("Usage: /fast <text>")
                 continue
-            respond(text, config, history, memory, voice_out, tools_enabled, config.fast_model)
+            respond(text, config, history, memory, voice_out, tools_enabled, getattr(config, "light_model", config.fast_model))
+            continue
+
+        remember_fact = extract_remember_fact(line)
+        if remember_fact:
+            emit("user", text=line)
+            cat = memory.suggest_category(remember_fact) if hasattr(memory, "suggest_category") else "other"
+            saved = memory.add(remember_fact, cat)
+            result_msg = f"Saved to memory [{cat}]: {remember_fact}" if saved else f"I already have that in memory: {remember_fact}"
+            print(f"Ada: {result_msg}")
+            emit("assistant", text=result_msg)
+            if voice_out and config.speak:
+                say(speaker, voice_out, "Saved to memory." if saved else "I already remember that.")
             continue
 
         learn_topic = extract_learn_topic(line)
@@ -813,21 +926,33 @@ def hands_free_loop(config: Config, history: list[dict], memory: Memory, speaker
                 continue
 
             print(f"{config.user_name}: {text}")
-            learn_topic = extract_learn_topic(text)
-            if learn_topic:
+            remember_fact = extract_remember_fact(text)
+            if remember_fact:
                 emit("user", text=text)
-                result_msg = learn_skill(learn_topic, config, voice_out)
+                cat = memory.suggest_category(remember_fact) if hasattr(memory, "suggest_category") else "other"
+                saved = memory.add(remember_fact, cat)
+                result_msg = f"Saved to memory [{cat}]: {remember_fact}" if saved else f"I already have that in memory: {remember_fact}"
                 print(f"Ada: {result_msg}")
                 emit("assistant", text=result_msg)
                 if voice_out and config.speak:
-                    say(speaker, voice_out, result_msg if len(result_msg) < 400 else "I researched the topic and saved a detailed skill.")
+                    say(speaker, voice_out, "Saved to memory." if saved else "I already remember that.")
                 result = True
             else:
-                allow_barge = bool(config.barge_in and speaker and voice_out and listener)
-                result = respond(
-                    text, config, history, memory, voice_out, tools_enabled,
-                    listener=listener, allow_barge_in=allow_barge,
-                )
+                learn_topic = extract_learn_topic(text)
+                if learn_topic:
+                    emit("user", text=text)
+                    result_msg = learn_skill(learn_topic, config, voice_out)
+                    print(f"Ada: {result_msg}")
+                    emit("assistant", text=result_msg)
+                    if voice_out and config.speak:
+                        say(speaker, voice_out, result_msg if len(result_msg) < 400 else "I researched the topic and saved a detailed skill.")
+                    result = True
+                else:
+                    allow_barge = bool(config.barge_in and speaker and voice_out and listener)
+                    result = respond(
+                        text, config, history, memory, voice_out, tools_enabled,
+                        listener=listener, allow_barge_in=allow_barge,
+                    )
             # if interrupted, immediately handle captured speech
             while isinstance(result, str) and result.strip():
                 print(f"{config.user_name}: {result}")
@@ -849,8 +974,18 @@ def main() -> None:
     config = Config.load()
     if args.model:
         config.model = args.model
+        config.deep_model = args.model
     if args.fast_model:
         config.fast_model = args.fast_model
+        config.light_model = args.fast_model
+    if getattr(args, "light_model", None):
+        config.light_model = args.light_model
+        config.fast_model = args.light_model
+    if getattr(args, "moderate_model", None):
+        config.moderate_model = args.moderate_model
+    if getattr(args, "deep_model", None):
+        config.deep_model = args.deep_model
+        config.model = args.deep_model
     if args.no_speak:
         config.speak = False
     if args.no_web:
@@ -883,7 +1018,8 @@ def main() -> None:
     tools_enabled = not args.no_tools
 
     if args.warmup:
-        print(f"[warm] loading {config.fast_model}…")
+        warm = getattr(config, "light_model", config.fast_model)
+        print(f"[warm] loading {warm}…")
         if warm_model(config, memory, tools_enabled):
             print("[warm] model ready")
         else:
@@ -912,11 +1048,16 @@ def main() -> None:
             mem_items = memory.all() if hasattr(memory, "all") else list(memory)
         except Exception:
             mem_items = []
+        light = getattr(config, "light_model", config.fast_model)
+        mod = getattr(config, "moderate_model", config.fast_model)
+        deep = getattr(config, "deep_model", config.model)
         emit(
             "session",
             user=config.user_name,
-            quick=config.fast_model,
-            deep=config.model,
+            light=light,
+            moderate=mod,
+            deep=deep,
+            quick=light,
             voice=config.voice if config.speak else None,
             input=(
                 "flow"
@@ -940,7 +1081,10 @@ def main() -> None:
     if config.hands_free or config.voice_input:
         listener = make_listener(config, load=True)
 
-    print(f"[models] quick={config.fast_model}  deep={config.model}  "
+    light = getattr(config, "light_model", config.fast_model)
+    mod = getattr(config, "moderate_model", config.fast_model)
+    deep = getattr(config, "deep_model", config.model)
+    print(f"[models] light={light}  moderate={mod}  deep={deep}  "
           f"routing={'auto' if config.auto_route else 'off'}")
     print(f"[voice] {'ON — ' + speaker.name if speaker else 'OFF (text only)'}")
     input_mode = "flow" if config.flow_mode else ("hands-free" if config.hands_free else ("push-to-talk" if config.voice_input else "text"))
