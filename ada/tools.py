@@ -117,6 +117,62 @@ def _reminder_loop():
             emit("assistant", text=f"Reminder: {msg}")
 
 
+def _uploads_dir() -> Path:
+    return Path(__file__).resolve().parent.parent / "data" / "uploads"
+
+
+def list_uploads_tool() -> str:
+    try:
+        up = _uploads_dir()
+        up.mkdir(parents=True, exist_ok=True)
+        items = []
+        for p in sorted(up.iterdir(), key=lambda x: x.stat().st_mtime, reverse=True):
+            if p.name.endswith(".extract.txt") or p.name.endswith(".json.meta"):
+                continue
+            if not p.is_file():
+                continue
+            extp = p.with_suffix(p.suffix + ".extract.txt") if p.suffix else Path(str(p) + ".extract.txt")
+            items.append({
+                "name": p.name,
+                "path": str(p),
+                "size": p.stat().st_size,
+                "mtime": datetime.fromtimestamp(p.stat().st_mtime).isoformat(timespec="seconds"),
+                "extracted_text": str(extp) if extp.exists() else None,
+            })
+        if not items:
+            return "No uploaded documents."
+        return json.dumps(items, indent=2)
+    except Exception as err:
+        return f"ERROR: could not list uploads ({type(err).__name__}: {err})."
+
+
+def read_upload(name_or_path: str, prefer_extracted: bool = True, config: "Config | None" = None) -> str:
+    try:
+        target = (name_or_path or "").strip()
+        if not target:
+            return "ERROR: no upload name/path provided."
+        p = Path(target)
+        if not p.is_absolute():
+            # try uploads dir by name first
+            cand = _uploads_dir() / target
+            p = cand if cand.exists() else Path(target)
+        if not p.exists():
+            return f"ERROR: upload not found: {target}"
+        # if it's an original file and extracted text exists, prefer it for readability/training
+        if prefer_extracted and not p.name.endswith(".extract.txt"):
+            extp = p.with_suffix(p.suffix + ".extract.txt") if p.suffix else Path(str(p) + ".extract.txt")
+            if extp.exists():
+                p = extp
+        if config and not _is_path_allowed(p, config, for_write=False):
+            return "ERROR: path is outside allowed paths."
+        text = p.read_text(encoding="utf-8", errors="ignore")
+        if len(text) > 20000:
+            text = text[:20000] + "\n...[truncated]"
+        return f"Path: {p}\n\n{text}"
+    except Exception as err:
+        return f"ERROR: could not read upload ({type(err).__name__}: {err})."
+
+
 def ada_info(config: "Config") -> str:
     try:
         root = Path(__file__).resolve().parent.parent
@@ -129,6 +185,7 @@ def ada_info(config: "Config") -> str:
             "skills_dir": str(getattr(config, "skills_dir", root / "assets" / "skills")),
             "memory_file": str(getattr(config, "memory_file", root / "data" / "memories.json")),
             "reminders_file": str(getattr(config, "reminders_file", root / "data" / "reminders.json")),
+            "uploads_dir": str(root / "data" / "uploads"),
             "workspace": str(getattr(config, "workspace", None) or cwd),
             "allowed_paths": list(getattr(config, "allowed_paths", []) or []),
             "confirm_dangerous_commands": bool(getattr(config, "confirm_dangerous_commands", False)),
@@ -903,7 +960,9 @@ TOOLS = [
     {"type": "function", "function": {"name": "list_reminders", "description": "List pending reminders.", "parameters": {"type": "object", "properties": {}}}},
     {"type": "function", "function": {"name": "remove_reminder", "description": "Remove a reminder by id or matching text.", "parameters": {"type": "object", "properties": {"reminder_id": {"type": "string"}}, "required": ["reminder_id"]}}},
     {"type": "function", "function": {"name": "send_notification", "description": "Send a notification (locally and via Home Assistant notify service if configured).", "parameters": {"type": "object", "properties": {"message": {"type": "string"}, "title": {"type": "string"}}, "required": ["message"]}}},
-    {"type": "function", "function": {"name": "ada_info", "description": "Get information about Ada's own environment and paths (project root, config, persona, skills, memory, workspace). Use this when asked to improve/modify Ada itself or to understand where Ada runs.", "parameters": {"type": "object", "properties": {}}}},
+    {"type": "function", "function": {"name": "ada_info", "description": "Get information about Ada's own environment and paths (project root, config, persona, skills, memory, uploads, workspace). Use this when asked to improve/modify Ada itself or to understand where Ada runs.", "parameters": {"type": "object", "properties": {}}}},
+    {"type": "function", "function": {"name": "list_uploads", "description": "List documents uploaded by the user (papers, slides, notes, etc.) available for Ada to read and learn from.", "parameters": {"type": "object", "properties": {}}}},
+    {"type": "function", "function": {"name": "read_upload", "description": "Read an uploaded document's content by name (prefers extracted text when available). Use to learn from or answer questions about uploaded papers/slides/files.", "parameters": {"type": "object", "properties": {"name": {"type": "string", "description": "Upload filename or path."}, "prefer_extracted": {"type": "boolean", "description": "Prefer extracted text sidecar when available (default true)."}}, "required": ["name"]}}},
 ]
 
 
@@ -1024,6 +1083,13 @@ def run_tool(name: str, args: dict, memory: "Memory", config: "Config") -> str:
             return send_notification(str(args.get("message", "")), config, str(args.get("title", "Ada")))
         if name == "ada_info":
             return ada_info(config)
+        if name == "list_uploads":
+            return list_uploads_tool()
+        if name == "read_upload":
+            pe = args.get("prefer_extracted", True)
+            if isinstance(pe, str):
+                pe = pe.strip().lower() in {"1", "true", "yes", "on"}
+            return read_upload(str(args.get("name", "")), bool(pe), config=config)
         return f"ERROR: unknown tool {name!r}."
     except Exception as err:
         return f"ERROR: {name} failed ({type(err).__name__}: {err})."

@@ -51,8 +51,25 @@ MODERATE_HINTS = (
     "debug",
     "fix",
     "code",
+    "coding",
     "implement",
     "refactor",
+    "create",
+    "make",
+    "build",
+    "project",
+    "app",
+    "application",
+    "server",
+    "script",
+    "program",
+    "website",
+    "webpage",
+    "api",
+    "compile",
+    "setup",
+    "configure",
+    "install",
 )
 
 
@@ -186,6 +203,10 @@ class Config:
 
     # Learning
     learn_depth: str = "deep"  # quick | deep
+
+    # Auto memory
+    auto_memory: bool = True
+    auto_memory_max_items: int = 200
 
     # Workspace
     workspace: str | None = None

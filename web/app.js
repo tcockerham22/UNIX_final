@@ -8,6 +8,12 @@ const els = {
   modelText: document.getElementById("model-text"),
   linkText: document.getElementById("link-text"),
   tiersText: document.getElementById("tiers-text"),
+  uploadPanel: document.getElementById("upload-panel"),
+  uploadToggle: document.getElementById("upload-toggle"),
+  uploadFile: document.getElementById("upload-file"),
+  uploadBtn: document.getElementById("upload-btn"),
+  uploadStatus: document.getElementById("upload-status"),
+  uploadList: document.getElementById("upload-list"),
 };
 
 const ctx = els.canvas ? els.canvas.getContext("2d") : null;
@@ -23,15 +29,15 @@ const STATE_LABELS = {
   error: "FAULT",
 };
 
-// Original GitHub orb palettes
+// Palettes inspired by MIO: Memories in Orbit (lighter, vivid tones)
 const PALETTES = {
-  idle: { core: "#8fd9a8", glow: "rgba(90,160,110,0.16)", ring: "rgba(143,217,168,0.34)", accent: "#e7f6d8" },
-  listening: { core: "#9fe3b6", glow: "rgba(100,170,120,0.16)", ring: "rgba(159,227,182,0.38)", accent: "#f0ffe8" },
-  transcribing: { core: "#9fe3b6", glow: "rgba(100,170,120,0.16)", ring: "rgba(159,227,182,0.38)", accent: "#f0ffe8" },
-  thinking: { core: "#ffd89a", glow: "rgba(200,150,70,0.16)", ring: "rgba(255,216,154,0.38)", accent: "#fff3dc" },
-  speaking: { core: "#b7efb0", glow: "rgba(120,190,110,0.17)", ring: "rgba(183,239,176,0.40)", accent: "#f4ffe6" },
-  warming: { core: "#d8c9a8", glow: "rgba(160,140,100,0.14)", ring: "rgba(216,201,168,0.34)", accent: "#fff4df" },
-  error: { core: "#ffab96", glow: "rgba(210,110,80,0.16)", ring: "rgba(255,171,150,0.40)", accent: "#ffe7df" },
+  idle: { core: "#8fd3ff", glow: "rgba(120, 190, 255, 0.10)", ring: "rgba(143,211,255,0.42)", accent: "#eef8ff" },
+  listening: { core: "#7ff5d8", glow: "rgba(110,235,200,0.10)", ring: "rgba(127,245,216,0.44)", accent: "#f2fff9" },
+  transcribing: { core: "#7ff5d8", glow: "rgba(110, 235, 200, 0.10)", ring: "rgba(127,245,216,0.44)", accent: "#f2fff9" },
+  thinking: { core: "#ffc86a", glow: "rgba(255,185,90,0.10)", ring: "rgba(255,200,106,0.44)", accent: "#fff4de" },
+  speaking: { core: "#c79bff", glow: "rgba(185, 140, 255, 0.10)", ring: "rgba(199,155,255,0.46)", accent: "#f7efff" },
+  warming: { core: "#ffd59a", glow: "rgba(245,190,120,0.10)", ring: "rgba(255,213,154,0.40)", accent: "#fff6e8" },
+  error: { core: "#ff8f87", glow: "rgba(255,120,110,0.10)", ring: "rgba(255,143,135,0.44)", accent: "#ffeceb" },
 };
 
 const state = {
@@ -48,6 +54,9 @@ const state = {
   activeSkill: "",
   knownSkills: [],
   tiers: { light: "—", moderate: "—", deep: "—" },
+  knowledge: { memories: 0, skills: 0, uploads: 0 },
+  ripples: [],
+  lastRippleAt: 0,
 };
 
 const particles = Array.from({ length: 48 }, () => ({
@@ -128,7 +137,22 @@ function tierLabel(model) {
   return "";
 }
 
+function spawnRipple(kind = "state", strength = 1) {
+  if (reduceMotion) return;
+  const now = performance.now();
+  if (now - state.lastRippleAt < 120 && state.ripples.length > 6) return;
+  state.lastRippleAt = now;
+  state.ripples.push({
+    kind,
+    t: now,
+    strength: Math.max(0.4, Math.min(1.4, strength)),
+    dur: kind === "learn" ? 1800 : kind === "memory" ? 1500 : 1200,
+  });
+  if (state.ripples.length > 10) state.ripples.splice(0, state.ripples.length - 10);
+}
+
 function setState(name, detail) {
+  const prev = state.current;
   const next = name || "idle";
   state.current = next;
   state.detail = detail || (next === "idle" ? "awaiting input" : "");
@@ -136,6 +160,12 @@ function setState(name, detail) {
   if (els.stateLabel) els.stateLabel.textContent = STATE_LABELS[next] || next.toUpperCase();
   if (els.stateDetail) els.stateDetail.textContent = state.detail;
   if (next === "idle") clearStages();
+  if (prev !== next) {
+    if (next === "listening" || next === "transcribing") spawnRipple("hear", 0.9);
+    else if (next === "thinking" || next === "warming") spawnRipple("think", 1.0);
+    else if (next === "speaking") spawnRipple("voice", 1.05);
+    else if (next === "error") spawnRipple("error", 0.8);
+  }
 }
 
 function setRoute(label, model, tools) {
@@ -178,9 +208,13 @@ function handleEvent(event) {
       if (data.name) state.activeSkill = data.name;
       state.knownSkills = state.knownSkills.slice(0, 8);
       activateStage("skill", 5000);
+      spawnRipple("learn", 1.0);
+      loadKnowledge();
       break;
     case "memory":
       activateStage("memory", 3500);
+      spawnRipple(data.action === "upload" ? "learn" : "memory", data.action === "ingest_skill" ? 1.15 : 0.9);
+      if (data.action === "upload" || data.action === "ingest_skill") loadKnowledge();
       break;
     case "notification":
       break;
@@ -217,9 +251,11 @@ function handleEvent(event) {
         activateStage("tools", 2500);
         if (data.name === "read_skill" || data.name === "save_skill") {
           activateStage("skill", 4500);
+          if (data.status === "end" && data.ok !== false) { spawnRipple("learn", 0.95); loadKnowledge(); }
         }
         if (data.name === "remember" || data.name === "forget" || data.name === "list_memories") {
           activateStage("memory", 3500);
+          if (data.status === "end" && data.ok !== false && (data.name === "remember" || data.name === "forget")) { spawnRipple("memory", 0.9); loadKnowledge(); }
         }
       }
       break;
@@ -282,12 +318,13 @@ function draw(now) {
 
   // Grid behind orb: tight asymmetric grid (slants down to the left), fading toward edges
   ctx.save();
-  const gridR = Math.max(w, h) * 0.68;
+  const gridR = Math.max(w, h) * 0.62;
   function gridPass(stepX, stepY, alphaCenter, slant, width = 1) {
     const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, gridR);
     g.addColorStop(0, `rgba(150,255,215,${alphaCenter})`);
-    g.addColorStop(0.35, `rgba(150,255,215,${alphaCenter * 0.5})`);
-    g.addColorStop(0.65, `rgba(150,255,215,${alphaCenter * 0.18})`);
+    g.addColorStop(0.22, `rgba(150,255,215,${alphaCenter * 0.45})`);
+    g.addColorStop(0.45, `rgba(150,255,215,${alphaCenter * 0.14})`);
+    g.addColorStop(0.7, `rgba(150,255,215,${alphaCenter * 0.04})`);
     g.addColorStop(1, "rgba(150,255,215,0)");
     ctx.strokeStyle = g;
     ctx.lineWidth = width;
@@ -315,42 +352,126 @@ function draw(now) {
   gridPass(fineX * 3, fineY * 3, 0.06, fineSlant * 3, 1);
   ctx.restore();
 
-  // ambient field (living, softer)
+  // ambient field (living, softer, painterly motes)
   ctx.save();
   for (const a of ambient) {
     const ax = ((a.x + Math.sin(t * a.v + a.p) * 0.04) % 1) * w;
     const ay = ((a.y + Math.cos(t * a.v * 0.7 + a.p) * 0.03 + (t * a.v * 0.12) % 1)) * h;
-    const tw = 0.5 + 0.5 * Math.sin(t * 1.1 + a.p);
-    ctx.globalAlpha = 0.02 + tw * 0.045 * (0.7 + energy * 0.35 + presence);
+    const tw = 0.5 + 0.5 * Math.sin(t * 1.05 + a.p);
+    ctx.globalAlpha = 0.015 + tw * 0.035 * (0.7 + energy * 0.3 + presence);
     ctx.fillStyle = a.s > 1.2 ? palette.core : palette.accent;
     ctx.beginPath();
-    ctx.arc(ax, ay, a.s, 0, Math.PI * 2);
+    ctx.arc(ax, ay, a.s * 1.15, 0, Math.PI * 2);
     ctx.fill();
   }
   ctx.restore();
 
-  const glow = ctx.createRadialGradient(cx, cy, base * 0.2, cx, cy, base * 3.6);
-  glow.addColorStop(0, palette.glow);
+  // subtle vignette (MIO-inspired atmosphere)
+  ctx.save();
+  const vg = ctx.createRadialGradient(cx, cy, minDim * 0.15, cx, cy, Math.max(w, h) * 0.75);
+  vg.addColorStop(0, "rgba(0,0,0,0)");
+  vg.addColorStop(1, "rgba(8,12,14,0.22)");
+  ctx.fillStyle = vg;
+  ctx.fillRect(0, 0, w, h);
+  ctx.restore();
+
+  // subtle minimal framing / anchor
+  ctx.save();
+  const frameR = Math.min(w, h) * 0.46;
+  const frameA = 0.06 + energy * 0.04;
+  ctx.strokeStyle = palette.ring;
+  ctx.globalAlpha = frameA;
+  ctx.lineWidth = Math.max(1, ui * 0.9);
+  const corners = [[-1, -1], [1, -1], [1, 1], [-1, 1]];
+  for (const [sx, sy] of corners) {
+    const fx = cx + sx * frameR * 0.82;
+    const fy = cy + sy * frameR * 0.62;
+    const len = Math.max(14, minDim * 0.03);
+    ctx.beginPath();
+    ctx.moveTo(fx - sx * len, fy);
+    ctx.lineTo(fx, fy);
+    ctx.lineTo(fx, fy - sy * len);
+    ctx.stroke();
+  }
+  // faint reticle arcs
+  ctx.globalAlpha = frameA * 0.7;
+  ctx.beginPath(); ctx.arc(cx, cy, frameR * 0.92, -Math.PI * 0.78, -Math.PI * 0.58); ctx.stroke();
+  ctx.beginPath(); ctx.arc(cx, cy, frameR * 0.92, -Math.PI * 0.42, -Math.PI * 0.22); ctx.stroke();
+  ctx.beginPath(); ctx.arc(cx, cy, frameR * 0.92, Math.PI * 0.22, Math.PI * 0.42); ctx.stroke();
+  ctx.beginPath(); ctx.arc(cx, cy, frameR * 0.92, Math.PI * 0.58, Math.PI * 0.78); ctx.stroke();
+  ctx.globalAlpha = frameA * 0.45;
+  const tickL = Math.max(6, minDim * 0.012);
+  for (let i = 0; i < 4; i++) {
+    const a = i * Math.PI / 2;
+    const x1 = cx + Math.cos(a) * frameR * 0.985;
+    const y1 = cy + Math.sin(a) * frameR * 0.985;
+    const x2 = cx + Math.cos(a) * (frameR * 0.985 - tickL);
+    const y2 = cy + Math.sin(a) * (frameR * 0.985 - tickL);
+    ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+  }
+  ctx.restore();
+
+
+  const glow = ctx.createRadialGradient(cx, cy, base * 0.15, cx, cy, base * 3.0);
+  glow.addColorStop(0, palette.core);
+  glow.addColorStop(0.18, palette.glow);
   glow.addColorStop(1, "rgba(0,0,0,0)");
-  ctx.globalAlpha = 0.95 * flicker;
+  ctx.globalAlpha = 0.38 * flicker;
   ctx.fillStyle = glow;
   ctx.fillRect(0, 0, w, h);
   ctx.globalAlpha = 1;
 
-  // hologram base/projection + reflection (original, not stacked)
+  // hairpin wire strands (top, MIO-inspired)
+  ctx.save();
+  ctx.translate(cx, cy - base * 1.12);
+  ctx.lineCap = "round";
+  for (let i = 0; i < 8; i++) {
+    const side = i < 4 ? -1 : 1;
+    const idx = i % 4;
+    const sx = side * base * (0.04 + idx * 0.18);
+    const sy = 0;
+    const reach = base * (0.22 + idx * 0.12);
+    const sway = Math.sin(t * (0.45 + idx * 0.08) + i + 1.2) * base * 0.045;
+    const ex = sx + side * base * (0.08 + idx * 0.1) + sway;
+    const ey = -reach;
+    const alpha = 0.12 + energy * 0.06;
+    ctx.strokeStyle = palette.core;
+    ctx.globalAlpha = alpha;
+    ctx.lineWidth = Math.max(0.8, (1.3 - idx * 0.12) * ui);
+    ctx.beginPath();
+    ctx.moveTo(sx, sy);
+    ctx.bezierCurveTo(sx + side * base * 0.05, sy - reach * 0.35, sx + side * base * 0.08 + sway * 0.6, sy - reach * 0.7, ex, ey);
+    ctx.stroke();
+    // hairpin hook tip
+    const tipAng = Math.atan2(ey - (sy - reach * 0.7), ex - (sx + side * base * 0.08 + sway * 0.6));
+    const hookDir = side > 0 ? -1 : 1;
+    const hx = ex + Math.cos(tipAng + hookDir * 1.2) * base * 0.045;
+    const hy = ey + Math.sin(tipAng + hookDir * 1.2) * base * 0.045;
+    ctx.strokeStyle = palette.accent;
+    ctx.lineWidth = Math.max(0.7, (1.0 - idx * 0.1) * ui);
+    ctx.beginPath();
+    ctx.moveTo(ex, ey);
+    ctx.quadraticCurveTo(ex + Math.cos(tipAng + hookDir * 0.6) * base * 0.04, ey + Math.sin(tipAng + hookDir * 0.6) * base * 0.04, hx, hy);
+    ctx.stroke();
+    // glowing tip
+    ctx.save();
+    ctx.shadowBlur = 8 * ui;
+    ctx.shadowColor = palette.accent;
+    ctx.fillStyle = palette.accent;
+    ctx.globalAlpha = alpha + 0.1;
+    ctx.beginPath();
+    ctx.arc(ex, ey, Math.max(1.0, 1.8 * ui - idx * 0.15), 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+  ctx.restore();
+
+  // hologram base/projection + reflection (no rings)
   ctx.save();
   ctx.translate(cx, cy + base * 1.32);
   ctx.globalAlpha = (0.14 + energy * 0.13) * flicker;
   ctx.strokeStyle = palette.core;
   ctx.lineWidth = Math.max(1, 1.2 * ui);
-  for (let i = 0; i < 3; i++) {
-    const rx = base * (1.25 + i * 0.4);
-    const ry = base * (0.22 + i * 0.06);
-    ctx.beginPath();
-    ctx.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2);
-    ctx.stroke();
-  }
-  ctx.globalAlpha *= 0.8;
   ctx.beginPath();
   ctx.moveTo(-base * 0.03, -base * 0.18);
   ctx.lineTo(-base * 0.95, -base * 1.02);
@@ -360,11 +481,53 @@ function draw(now) {
   const pool = ctx.createRadialGradient(0, 0, base * 0.1, 0, 0, base * 1.6);
   pool.addColorStop(0, palette.glow);
   pool.addColorStop(1, "rgba(0,0,0,0)");
-  ctx.globalAlpha = 0.18 + energy * 0.1;
+  ctx.globalAlpha = 0.08 + energy * 0.05;
   ctx.fillStyle = pool;
   ctx.beginPath();
   ctx.ellipse(0, base * 0.06, base * 1.5, base * 0.28, 0, 0, Math.PI * 2);
   ctx.fill();
+
+  // hairpin wire strands (bottom, MIO-inspired)
+  ctx.lineCap = "round";
+  for (let i = 0; i < 8; i++) {
+    const side = i < 4 ? -1 : 1;
+    const idx = i % 4;
+    const sx = side * base * (0.04 + idx * 0.2);
+    const sy = base * 0.02;
+    const reach = base * (0.3 + idx * 0.14);
+    const sway = Math.sin(t * (0.42 + idx * 0.08) + i) * base * 0.05;
+    const ex = sx + side * base * (0.12 + idx * 0.14) + sway;
+    const ey = sy + reach;
+    const alpha = 0.14 + energy * 0.07;
+    ctx.strokeStyle = palette.core;
+    ctx.globalAlpha = alpha;
+    ctx.lineWidth = Math.max(0.9, (1.5 - idx * 0.14) * ui);
+    ctx.beginPath();
+    ctx.moveTo(sx, sy);
+    ctx.bezierCurveTo(sx + side * base * 0.08, sy + reach * 0.35, sx + side * base * 0.11 + sway * 0.6, sy + reach * 0.7, ex, ey);
+    ctx.stroke();
+    // hairpin hook tip
+    const tipAng = Math.atan2(ey - (sy + reach * 0.7), ex - (sx + side * base * 0.11 + sway * 0.6));
+    const hookDir = side > 0 ? 1 : -1;
+    const hx = ex + Math.cos(tipAng + hookDir * 1.2) * base * 0.045;
+    const hy = ey + Math.sin(tipAng + hookDir * 1.2) * base * 0.045;
+    ctx.strokeStyle = palette.accent;
+    ctx.lineWidth = Math.max(0.8, (1.1 - idx * 0.1) * ui);
+    ctx.beginPath();
+    ctx.moveTo(ex, ey);
+    ctx.quadraticCurveTo(ex + Math.cos(tipAng + hookDir * 0.6) * base * 0.04, ey + Math.sin(tipAng + hookDir * 0.6) * base * 0.04, hx, hy);
+    ctx.stroke();
+    // glowing tip
+    ctx.save();
+    ctx.shadowBlur = 8 * ui;
+    ctx.shadowColor = palette.accent;
+    ctx.fillStyle = palette.accent;
+    ctx.globalAlpha = alpha + 0.1;
+    ctx.beginPath();
+    ctx.arc(ex, ey, Math.max(1.0, 1.9 * ui - idx * 0.15), 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
   ctx.restore();
 
   // orbit rings + hologram ticks (original)
@@ -386,6 +549,45 @@ function draw(now) {
     ctx.ellipse(0, 0, rx, ry, rot, t * 0.5 + i, t * 0.5 + i + 0.8);
     ctx.stroke();
   }
+
+  // memory/knowledge presence: faint orbiting fragments/constellations
+  const k = state.knowledge || { memories: 0, skills: 0, uploads: 0 };
+  const kCount = Math.min(24, Math.max(0, (k.skills || 0) + (k.memories || 0) + (k.uploads || 0)));
+  if (kCount > 0) {
+    ctx.globalCompositeOperation = "lighter";
+    for (let i = 0; i < kCount; i++) {
+      const kind = i < (k.skills || 0) ? "skill" : (i < (k.skills || 0) + (k.memories || 0) ? "memory" : "upload");
+      const band = kind === "skill" ? 2.02 : (kind === "memory" ? 2.28 : 2.52);
+      const a = (i * 2.399963) + t * (0.03 + (i % 5) * 0.004) * (i % 2 ? 1 : -1);
+      const wob = Math.sin(t * 0.7 + i * 1.7) * base * 0.03;
+      const rx = base * band + wob;
+      const ry = base * (band * 0.74) + wob * 0.5;
+      const x = Math.cos(a) * rx;
+      const y = Math.sin(a) * ry;
+      const tw = 0.55 + 0.45 * Math.sin(t * 1.2 + i * 0.9);
+      ctx.globalAlpha = (0.05 + tw * 0.08) * (0.7 + energy * 0.4);
+      ctx.fillStyle = kind === "upload" ? palette.accent : (kind === "skill" ? palette.core : "rgba(210,240,255,0.9)");
+      const sz = kind === "upload" ? 1.8 : 1.4;
+      ctx.beginPath();
+      ctx.arc(x, y, sz * ui * (0.8 + tw * 0.4), 0, Math.PI * 2);
+      ctx.fill();
+      if (i % 3 === 0) {
+        const j = (i + 2) % kCount;
+        const a2 = (j * 2.399963) + t * (0.03 + (j % 5) * 0.004) * (j % 2 ? 1 : -1);
+        const band2 = j < (k.skills || 0) ? 2.02 : (j < (k.skills || 0) + (k.memories || 0) ? 2.28 : 2.52);
+        const x2 = Math.cos(a2) * base * band2;
+        const y2 = Math.sin(a2) * base * band2 * 0.74;
+        const d = Math.hypot(x2 - x, y2 - y);
+        if (d < base * 0.9) {
+          ctx.strokeStyle = palette.ring;
+          ctx.globalAlpha = 0.03 + tw * 0.03;
+          ctx.lineWidth = 1;
+          ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x2, y2); ctx.stroke();
+        }
+      }
+    }
+    ctx.globalCompositeOperation = "source-over";
+  }
   const tickR = base * 1.48;
   const tickRot = t * 0.12;
   ctx.strokeStyle = palette.accent;
@@ -394,10 +596,49 @@ function draw(now) {
     const a = tickRot + (i / 48) * Math.PI * 2;
     const major = i % 6 === 0;
     const len = (major ? base * 0.06 : base * 0.03) * (1 + 0.15 * Math.sin(t * 0.8 + i));
-    ctx.globalAlpha = (major ? 0.06 : 0.03) + energy * 0.06;
+    ctx.globalAlpha = (major ? 0.05 : 0.025) + energy * 0.05;
     ctx.beginPath();
     ctx.moveTo(Math.cos(a) * tickR, Math.sin(a) * tickR * 0.74);
     ctx.lineTo(Math.cos(a) * (tickR + len), Math.sin(a) * (tickR + len) * 0.74);
+    ctx.stroke();
+  }
+
+  // organic Vessel/memory linework
+  function sketchArc(radiusX, radiusY, start, end, wobble, steps = 48, alpha = 0.08, lw = 1, color = palette.ring) {
+    ctx.strokeStyle = color;
+    ctx.lineWidth = lw;
+    ctx.globalAlpha = alpha;
+    ctx.beginPath();
+    for (let i = 0; i <= steps; i++) {
+      const p = i / steps;
+      const a = start + (end - start) * p;
+      const j = (Math.sin(a * 7 + t * 0.7 + wobble) * 0.5 + Math.sin(a * 13 - t * 0.4 + wobble * 1.7) * 0.5) * wobble;
+      const rx = radiusX + j;
+      const ry = radiusY + j * 0.55;
+      const x = Math.cos(a) * rx;
+      const y = Math.sin(a) * ry * 0.74;
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  }
+
+  const memRot = t * 0.045;
+  sketchArc(base * 1.95, base * 1.38, memRot + 0.2, memRot + 1.9, base * 0.012, 56, 0.07 + energy * 0.04, 1, palette.ring);
+  sketchArc(base * 2.08, base * 1.48, -memRot + 2.4, -memRot + 4.1, base * 0.01, 56, 0.05 + energy * 0.03, 0.9, palette.accent);
+  sketchArc(base * 1.62, base * 1.18, memRot * 1.2 + 4.0, memRot * 1.2 + 5.4, base * 0.008, 40, 0.045 + energy * 0.03, 0.9, palette.core);
+  for (let i = 0; i < 10; i++) {
+    const a = memRot * (i % 2 ? -1 : 1) + (i / 10) * Math.PI * 2;
+    const rr = base * (1.58 + (i % 3) * 0.22);
+    const x = Math.cos(a) * rr;
+    const y = Math.sin(a) * rr * 0.74;
+    const len = base * (0.03 + (i % 4) * 0.012);
+    const ta = a + Math.PI / 2 + Math.sin(t * 0.6 + i) * 0.12;
+    ctx.globalAlpha = 0.05 + energy * 0.05;
+    ctx.strokeStyle = i % 2 ? palette.accent : palette.ring;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(x - Math.cos(ta) * len, y - Math.sin(ta) * len * 0.74);
+    ctx.lineTo(x + Math.cos(ta) * len, y + Math.sin(ta) * len * 0.74);
     ctx.stroke();
   }
   ctx.restore();
@@ -505,7 +746,7 @@ function draw(now) {
   blobPath(radius * (1.04 + audio * 0.03), 0.0, 1.05 + audio * 0.25, outerLiquidAmp);
   ctx.fill();
   ctx.globalAlpha = (0.10 + audio * 0.06) * flicker;
-  ctx.fillStyle = "#9ffcff";
+  ctx.fillStyle = "#d8fff0";
   blobPath(radius * (1.00 + audio * 0.02), 1.7, 0.95 + audio * 0.22, outerLiquidAmp);
   ctx.fill();
   ctx.globalAlpha = (0.07 + audio * 0.04) * flicker;
@@ -571,8 +812,70 @@ function draw(now) {
   ctx.ellipse(cx + radius * 0.18, cy + radius * 0.05, radius * 0.12, radius * 0.07, 0.4, 0, Math.PI * 2);
   ctx.fill();
 
+  // expressive inner voice waveform/aura
+  if (speakingBoost || audio > 0.03) {
+    ctx.globalCompositeOperation = "lighter";
+    const va = 0.10 + audio * 0.22;
+    for (let wv = 0; wv < 2; wv++) {
+      const yOff = (wv - 0.5) * radius * 0.18;
+      ctx.globalAlpha = va * (1 - wv * 0.25);
+      ctx.strokeStyle = wv === 0 ? "rgba(255,245,255,0.85)" : palette.accent;
+      ctx.lineWidth = Math.max(1, (1.4 - wv * 0.3) * ui);
+      ctx.beginPath();
+      const segs = 42;
+      const span = radius * 0.62;
+      for (let i = 0; i <= segs; i++) {
+        const px = (i / segs) * 2 - 1;
+        const x = cx + px * span;
+        const env = Math.cos(px * Math.PI * 0.5);
+        const wave = Math.sin(px * 10 + t * (7 + wv * 2)) * 0.55 + Math.sin(px * 18 - t * 5.5) * 0.45;
+        const y = cy + yOff + wave * env * radius * (0.08 + audio * 0.18);
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 0.05 + audio * 0.12;
+    const ia = ctx.createRadialGradient(cx, cy, radius * 0.05, cx, cy, radius * 0.9);
+    ia.addColorStop(0, "rgba(255,255,255,0.35)");
+    ia.addColorStop(0.5, palette.accent);
+    ia.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = ia;
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, radius * (0.55 + audio * 0.15), radius * (0.38 + audio * 0.12), 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalCompositeOperation = "source-over";
+  }
 
   ctx.restore();
+
+  // feedback micro-transition ripples/pulses
+  if (state.ripples.length) {
+    const nowMs = performance.now();
+    ctx.save();
+    ctx.translate(cx, cy);
+    state.ripples = state.ripples.filter(r => (nowMs - r.t) < r.dur);
+    for (const r of state.ripples) {
+      const p = (nowMs - r.t) / r.dur;
+      if (p < 0 || p > 1) continue;
+      const ease = 1 - Math.pow(1 - p, 2);
+      const fade = (1 - p);
+      const baseR = r.kind === "memory" || r.kind === "learn" ? 1.05 : 1.15;
+      const rr = base * (baseR + ease * (r.kind === "hear" ? 0.85 : 1.05)) * r.strength;
+      ctx.globalAlpha = fade * (r.kind === "learn" ? 0.22 : 0.16) * r.strength;
+      ctx.strokeStyle = r.kind === "memory" || r.kind === "learn" ? palette.accent : palette.core;
+      ctx.lineWidth = Math.max(1, (1.6 - p * 0.8) * ui);
+      ctx.beginPath();
+      ctx.ellipse(0, 0, rr, rr * 0.78, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      if (r.kind === "memory" || r.kind === "learn") {
+        ctx.globalAlpha = fade * 0.08;
+        ctx.beginPath();
+        ctx.ellipse(0, 0, rr * 0.88, rr * 0.88 * 0.78, 0, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+    }
+    ctx.restore();
+  }
 
   // listening ripples (original)
   if (state.current === "listening" || state.current === "transcribing") {
@@ -591,25 +894,41 @@ function draw(now) {
     ctx.restore();
   }
 
-  // voice waveform ring when speaking (original)
+  // voice waveform ring + expressive aura when speaking
   if (speakingBoost || audio > 0.02) {
     ctx.save();
     ctx.translate(cx, cy);
-    ctx.globalAlpha = 0.12 + audio * 0.25;
-    ctx.strokeStyle = palette.accent;
-    ctx.lineWidth = Math.max(1, ui);
-    ctx.beginPath();
-    const bars = 64;
-    for (let i = 0; i <= bars; i++) {
-      const a = (i / bars) * Math.PI * 2;
-      const wave = Math.sin(a * 8 - t * 6) * Math.sin(a * 3 + t * 2);
-      const r = base * 1.55 + (wave * 0.5 + 0.5) * base * (0.06 + audio * 0.18);
-      const x = Math.cos(a) * r;
-      const y = Math.sin(a) * r * 0.74;
-      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    ctx.globalCompositeOperation = "lighter";
+    const aBase = 0.10 + audio * 0.28 + speakingBoost * 0.08;
+    for (let layer = 0; layer < 3; layer++) {
+      const rBase = base * (1.48 + layer * 0.07);
+      const bars = 72;
+      ctx.globalAlpha = (aBase - layer * 0.03) * (1 - layer * 0.18);
+      ctx.strokeStyle = layer === 1 ? palette.core : palette.accent;
+      ctx.lineWidth = Math.max(1, (1.2 - layer * 0.2) * ui);
+      ctx.beginPath();
+      for (let i = 0; i <= bars; i++) {
+        const a = (i / bars) * Math.PI * 2;
+        const wave = Math.sin(a * (7 + layer * 2) - t * (5.5 + layer)) * Math.sin(a * 3 + t * (2.2 - layer * 0.3));
+        const wave2 = Math.sin(a * 11 + t * 3.5 + layer) * 0.35;
+        const amp = (0.05 + audio * 0.22 + speakingBoost * 0.05) * (1 - layer * 0.18);
+        const r = rBase + (wave * 0.7 + wave2 * 0.3 + 0.5) * base * amp;
+        const x = Math.cos(a) * r;
+        const y = Math.sin(a) * r * 0.74;
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      ctx.closePath();
+      ctx.stroke();
     }
-    ctx.closePath();
-    ctx.stroke();
+    // inner voice aura
+    ctx.globalAlpha = 0.06 + audio * 0.18;
+    const aura = ctx.createRadialGradient(0, 0, base * 0.2, 0, 0, base * 1.25);
+    aura.addColorStop(0, palette.accent);
+    aura.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = aura;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, base * (1.05 + audio * 0.12), base * (0.82 + audio * 0.1), 0, 0, Math.PI * 2);
+    ctx.fill();
     ctx.restore();
   }
 
@@ -727,11 +1046,101 @@ function connect() {
     return;
   }
   const source = new EventSource("/events");
-  source.onopen = () => { resetView(); setLink(true); };
+  source.onopen = () => { resetView(); setLink(true); loadUploads(); loadKnowledge(); };
   source.onmessage = (msg) => {
     try { handleEvent(JSON.parse(msg.data)); } catch (_) { }
   };
   source.onerror = () => setLink(false);
+}
+
+async function loadKnowledge() {
+  try {
+    const res = await fetch("/api/knowledge", { cache: "no-store" });
+    if (!res.ok) return;
+    const data = await res.json();
+    state.knowledge.memories = Number(data.memories || 0);
+    state.knowledge.skills = Number(data.skills || 0);
+    state.knowledge.uploads = Number(data.uploads || 0);
+  } catch (_) { }
+}
+
+async function loadUploads() {
+  if (!els.uploadList) return;
+  try {
+    const res = await fetch("/api/uploads", { cache: "no-store" });
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const data = await res.json();
+    const items = Array.isArray(data.uploads) ? data.uploads : [];
+    state.knowledge.uploads = items.length;
+    if (!items.length) {
+      els.uploadList.innerHTML = '<div class="upload-item"><div>No uploads yet</div><div class="meta">Upload documents for Ada to read and learn from.</div></div>';
+      return;
+    }
+    els.uploadList.innerHTML = items.map((it) => {
+      const name = String(it.name || "");
+      const size = Number(it.size || 0);
+      const kb = size >= 1024 ? (size / 1024).toFixed(1) + " KB" : size + " B";
+      const ext = it.extracted ? "text extracted" : "saved";
+      return `<div class="upload-item"><div>${name.replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))}</div><div class="meta">${kb} • ${ext}</div></div>`;
+    }).join("");
+  } catch (_) {
+    if (els.uploadStatus) els.uploadStatus.textContent = "Could not load uploads.";
+  }
+}
+
+function readFileAsBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(reader.error || new Error("read failed"));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function uploadSelectedFiles() {
+  if (!els.uploadFile || !els.uploadFile.files || !els.uploadFile.files.length) {
+    if (els.uploadStatus) els.uploadStatus.textContent = "Choose one or more files first.";
+    return;
+  }
+  const files = Array.from(els.uploadFile.files);
+  if (els.uploadBtn) els.uploadBtn.disabled = true;
+  let ok = 0, fail = 0;
+  for (const file of files) {
+    try {
+      if (els.uploadStatus) els.uploadStatus.textContent = `Uploading ${file.name}…`;
+      const data = await readFileAsBase64(file);
+      const res = await fetch("/api/upload", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: file.name, data })
+      });
+      const out = await res.json().catch(() => ({}));
+      if (!res.ok || !out.ok) throw new Error(out.error || ("HTTP " + res.status));
+      ok++;
+    } catch (e) {
+      fail++;
+      console.error("upload failed", e);
+    }
+  }
+  if (els.uploadBtn) els.uploadBtn.disabled = false;
+  if (els.uploadFile) els.uploadFile.value = "";
+  if (els.uploadStatus) {
+    els.uploadStatus.textContent = fail
+      ? `Uploaded ${ok} file(s), ${fail} failed.`
+      : `Uploaded ${ok} file(s). Ada is reading and learning from them in the background.`;
+  }
+  loadUploads();
+}
+
+function setupUploads() {
+  if (els.uploadToggle && els.uploadPanel) {
+    els.uploadToggle.addEventListener("click", () => {
+      els.uploadPanel.classList.toggle("collapsed");
+    });
+  }
+  if (els.uploadBtn) {
+    els.uploadBtn.addEventListener("click", uploadSelectedFiles);
+  }
 }
 
 if (window.ResizeObserver && els.canvas) new ResizeObserver(resizeCanvas).observe(els.canvas);
@@ -742,9 +1151,16 @@ function applyDisplayMode() {
   const transparent = params.get("transparent");
   const isTransparent = bg === "transparent" || transparent === "1" || transparent === "true";
   if (isTransparent) document.body.style.background = "transparent";
+  const chrome = (params.get("chrome") || params.get("hud") || "").toLowerCase();
+  if (chrome === "0" || chrome === "false" || chrome === "none") {
+    document.body.classList.add("no-chrome");
+  }
 }
 applyDisplayMode();
 resizeCanvas();
 resetView();
+setupUploads();
+loadUploads();
+loadKnowledge();
 requestAnimationFrame(draw);
 connect();

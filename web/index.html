@@ -21,6 +21,17 @@
       </div>
       <div class="tiers" id="tiers-text">light · moderate · deep</div>
     </div>
+    <div id="upload-panel" class="upload-panel collapsed" aria-label="Uploads">
+      <button id="upload-toggle" class="upload-toggle" type="button" title="Upload documents">Uploads</button>
+      <div id="upload-body" class="upload-body">
+        <div class="upload-row">
+          <input id="upload-file" class="upload-file" type="file" multiple accept=".pdf,.ppt,.pptx,.doc,.docx,.txt,.md,.csv,.json,.rtf">
+          <button id="upload-btn" class="upload-btn" type="button">Upload</button>
+        </div>
+        <div id="upload-status" class="upload-status">Upload papers, slides, or notes for Ada to learn from.</div>
+        <div id="upload-list" class="upload-list"></div>
+      </div>
+    </div>
   </main>
   <script src="/app.js"></script>
 </body>

@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ada — Pepper's Ghost</title>
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #000;
+    }
+    .stage {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      background: #000;
+    }
+    .pane {
+      position: absolute;
+      width: min(34vmin, 34vh);
+      height: min(34vmin, 34vh);
+      overflow: hidden;
+      background: #000;
+    }
+    .pane iframe {
+      width: 100%;
+      height: 100%;
+      border: 0;
+      background: #000;
+      pointer-events: none;
+    }
+    /* Pepper's Ghost cross layout */
+    .pane.bottom {
+      left: 50%;
+      bottom: 2vmin;
+      transform: translateX(-50%);
+    }
+    .pane.top {
+      left: 50%;
+      top: 2vmin;
+      transform: translateX(-50%) rotate(180deg);
+    }
+    .pane.left {
+      top: 50%;
+      left: 2vmin;
+      transform: translateY(-50%) rotate(90deg);
+    }
+    .pane.right {
+      top: 50%;
+      right: 2vmin;
+      transform: translateY(-50%) rotate(-90deg);
+    }
+    .hint {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      color: rgba(180, 220, 210, 0.35);
+      font: 11px/1.4 Inter, "Segoe UI", system-ui, sans-serif;
+      text-align: center;
+      letter-spacing: 0.04em;
+      pointer-events: none;
+      max-width: 22vmin;
+    }
+    .hint strong { color: rgba(220, 245, 240, 0.55); font-weight: 500; }
+    @media (max-aspect-ratio: 1/1) {
+      .pane { width: 32vmin; height: 32vmin; }
+    }
+  </style>
+</head>
+<body>
+  <main class="stage" aria-label="Ada Pepper's Ghost hologram">
+    <div class="pane bottom"><iframe src="/?transparent=1&chrome=0" title="Ada bottom"></iframe></div>
+    <div class="pane top"><iframe src="/?transparent=1&chrome=0" title="Ada top"></iframe></div>
+    <div class="pane left"><iframe src="/?transparent=1&chrome=0" title="Ada left"></iframe></div>
+    <div class="pane right"><iframe src="/?transparent=1&chrome=0" title="Ada right"></iframe></div>
+    <div class="hint"><strong>Pepper's Ghost</strong><br>Place a clear pyramid reflector in the center. Use fullscreen for best effect.</div>
+  </main>
+</body>
+</html>

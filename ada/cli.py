@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import threading
 import time
@@ -27,7 +28,8 @@ TOOL_HINTS = re.compile(
     r"release[ds]?|version|update|search|google|look up|find out|online|website|url|link|"
     r"wikipedia|population|exchange rate|how much|how many people|what time|time is it|"
     r"date is it|remember|memorize|memorise|forget|don't forget|keep in mind|commit .*memory|commit .*to memory|save .*to memory|store .*in memory|add .*to memory|note that|"
-    r"learn|skill|skills|save skill|teach you|study|"
+    r"learn(?:ed|ing)?|skill|skills|save skill|teach you|study|"
+    r"upload(?:ed|s)?|document(?:s)?|paper(?:s)?|slide(?:s)?|presentation(?:s)?|pdf|pptx?|docx?|attachment(?:s)?|"
     r"code|coding|program|script|function|class|bug|debug|fix|implement|refactor|"
     r"file|folder|directory|read|write|edit|create|run|execute|command|terminal|shell|"
     r"install|build|test|git|python|javascript|typescript|bash)\b"
@@ -200,6 +202,111 @@ def _tool_call_to_dict(call) -> dict:
     return {"function": {"name": name, "arguments": arguments or {}}}
 
 
+def _extract_json_array(text: str):
+    if not text:
+        return None
+    text = text.strip()
+    try:
+        data = json.loads(text)
+        return data if isinstance(data, list) else None
+    except Exception:
+        pass
+    m = re.search(r"\[[\s\S]*\]", text)
+    if not m:
+        return None
+    try:
+        data = json.loads(m.group(0))
+        return data if isinstance(data, list) else None
+    except Exception:
+        return None
+
+
+def auto_remember_from_turn(config: Config, history: list[dict], memory: Memory, assistant_reply: str) -> None:
+    """Best-effort: extract durable, useful memories from recent conversation."""
+    if not getattr(config, "auto_memory", False):
+        return
+    if not assistant_reply or len(assistant_reply.strip()) < 2:
+        return
+    # collect recent conversational turns (skip system/tool internals)
+    recent = []
+    for msg in history[-8:]:
+        role = msg.get("role")
+        if role not in ("user", "assistant"):
+            continue
+        content = (msg.get("content") or "").strip()
+        if not content:
+            continue
+        # skip very long blobs
+        if len(content) > 1200:
+            content = content[:1200] + "…"
+        recent.append({"role": role, "content": content})
+    if not recent:
+        return
+
+    existing = memory.all() if hasattr(memory, "all") else []
+    existing_lines = []
+    for item in existing[-40:]:
+        if isinstance(item, dict):
+            existing_lines.append(f"- [{item.get('category','other')}] {item.get('text','')}")
+    existing_text = "\n".join(existing_lines) if existing_lines else "(none)"
+
+    model = getattr(config, "light_model", None) or getattr(config, "fast_model", None) or config.model
+    prompt = (
+        "Extract durable memories worth saving from this conversation.\n"
+        "Return ONLY a JSON array (no markdown) of objects: "
+        '{"text":"...", "category":"preference|person|home|project|routine|other"}.\n'
+        "Rules:\n"
+        "- Save only stable, useful facts: user preferences, personal details the user shared, routines, home/project context, important decisions or corrections.\n"
+        "- Do NOT save: greetings/small talk, transient requests, one-off questions, tool/output noise, secrets/passwords, or anything uncertain.\n"
+        "- Do NOT duplicate existing memories.\n"
+        f"- Max {int(getattr(config, 'auto_memory_max_items', 3) or 3)} items. If nothing worth saving, return [].\n\n"
+        f"Existing memories:\n{existing_text}\n\n"
+        f"Recent conversation (JSON):\n{json.dumps(recent, ensure_ascii=False)}\n"
+    )
+    try:
+        chat_kwargs = dict(
+            model=model,
+            messages=[{"role": "user", "content": prompt}],
+            options={"temperature": 0.1, "num_predict": 300, "num_ctx": min(getattr(config, 'num_ctx', 4096), 4096)},
+            keep_alive=getattr(config, "keep_alive", None),
+        )
+        if "qwen3" in (model or "").lower():
+            chat_kwargs["think"] = False
+        resp = ollama.chat(**chat_kwargs)
+        msg = resp.get("message", {}) if isinstance(resp, dict) else getattr(resp, "message", {})
+        content = (msg.get("content") or "") if isinstance(msg, dict) else (getattr(msg, "content", "") or "")
+        items = _extract_json_array(content) or []
+        allowed = {"preference", "person", "home", "project", "routine", "other"}
+        added = 0
+        for it in items:
+            if not isinstance(it, dict):
+                continue
+            text = " ".join(str(it.get("text", "")).split()).strip()
+            if not text or len(text) < 4 or len(text) > 240:
+                continue
+            cat = str(it.get("category", "other")).strip().lower() or "other"
+            if cat not in allowed:
+                cat = "other"
+            if memory.add(text, cat):
+                added += 1
+            if added >= int(getattr(config, "auto_memory_max_items", 3) or 3):
+                break
+        if added:
+            emit("memory", action="auto", added=added, count=len(memory.items) if hasattr(memory, "items") else None)
+    except Exception as err:
+        emit("error", message=f"auto_memory: {type(err).__name__}: {err}")
+
+
+def maybe_auto_remember(config: Config, history: list[dict], memory: Memory, assistant_reply: str) -> None:
+    if not getattr(config, "auto_memory", False):
+        return
+    try:
+        t = threading.Thread(target=auto_remember_from_turn, args=(config, list(history), memory, assistant_reply), daemon=True)
+        t.start()
+    except Exception:
+        pass
+
+
 def stream_reply(config: Config, history: list[dict], memory: Memory, model: str,
                  tools_enabled: bool, voice_out) -> str:
     options = {
@@ -268,6 +375,8 @@ def stream_reply(config: Config, history: list[dict], memory: Memory, model: str
                 voice_out.feed(sentence)
 
         if not calls:
+            if content:
+                maybe_auto_remember(config, history, memory, content)
             return content
 
         normalized = [_tool_call_to_dict(call) for call in calls]
