@@ -8,6 +8,7 @@ import json
 import re
 import threading
 import time
+from difflib import SequenceMatcher
 from datetime import datetime
 from pathlib import Path
 
@@ -106,6 +107,35 @@ def extract_learn_topic(text: str) -> str | None:
     return topic or None
 
 
+def find_wake_word(text: str, wake_words: list[str]) -> int | None:
+    """Return the character index just after a heard wake word, or None.
+
+    Whisper sometimes misspells names ("aida" for "ada", "love lace" for
+    "lovelace"), so allow a close match on single-word wake words too.
+    """
+    lowered = (text or "").lower()
+    spans = list(re.finditer(r"[a-z0-9]+", lowered))
+    tokens = [match.group(0) for match in spans]
+    for word in sorted((w for w in wake_words if w.strip()), key=len, reverse=True):
+        expected_tokens = re.findall(r"[a-z0-9]+", word.lower())
+        if not expected_tokens:
+            continue
+        expected = "".join(expected_tokens)
+        # Also try one token more/less: "love lace" vs "lovelace".
+        sizes = {len(expected_tokens) - 1, len(expected_tokens), len(expected_tokens) + 1}
+        for size in sorted(size for size in sizes if size >= 1):
+            for i in range(len(tokens) - size + 1):
+                candidate = "".join(tokens[i:i + size])
+                exact = candidate == expected
+                fuzzy = (
+                    size == len(expected_tokens)
+                    and SequenceMatcher(None, candidate, expected).ratio() >= 0.82
+                )
+                if exact or fuzzy:
+                    return spans[i + size - 1].end()
+    return None
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Chat with Ada.")
     parser.add_argument("--voice", action="store_true", help="push-to-talk microphone input")
@@ -170,6 +200,13 @@ def build_system_prompt(config: Config, memory: Memory, tools_enabled: bool) -> 
             "IMPORTANT: Call tools when the latest message needs them (current info, memory, skills, files, coding, commands, self-improvement, creating things). "
             "Do not use tools for simple greetings, thanks, or small talk. Do not repeat a tool call from an earlier turn "
             "unless the new message asks for it. If a fetch or command fails, try a reasonable alternative instead of repeating the same failing call.\n"
+        )
+        prompt += (
+            "DELEGATION: For a large or multi-part task, call spawn_agent to hand one clearly scoped, self-contained "
+            "sub-task to a helper, or spawn_agents to run several independent sub-tasks in parallel. Give each task "
+            "enough context to stand alone and say exactly what result you need back. Helpers have their own tools "
+            "(read-only by default), return a concise result, and cannot spawn further helpers. Synthesise their "
+            "results into your own answer rather than forwarding them verbatim. Do not delegate greetings or simple questions.\n"
         )
         skills = SkillStore(config.skills_dir)
         prompt += "\n## Skills\n"
@@ -464,6 +501,8 @@ def make_listener(config: Config, load: bool = False):
             config.input_device,
             beam_size=getattr(config, "stt_beam_size", 5),
             vad_filter=getattr(config, "stt_vad_filter", True),
+            sensitivity=getattr(config, "stt_sensitivity", 0.5),
+            debug=getattr(config, "stt_debug", False),
         )
         if load:
             print(f"[stt] loading {config.whisper_model}…", flush=True)
@@ -787,6 +826,7 @@ def print_help(config: Config, tools_enabled: bool) -> None:
   /skills            list saved skills
   /skill <name>      show a saved skill
   /learn <topic>     research and save a new skill
+  /agent <task>      delegate a task to a sub-agent
   /say <text>        test the voice
   /light <text>      force light model ({light})
   /moderate <text>   force moderate model ({mod})
@@ -857,6 +897,17 @@ def chat_loop(config: Config, history: list[dict], memory: Memory, speaker,
                 continue
             emit("user", text=line)
             result = learn_skill(topic, config, voice_out)
+            print(f"Ada: {result}")
+            emit("assistant", text=result)
+            continue
+        if line == "/agent" or line.startswith("/agent "):
+            task = line[len("/agent"):].strip()
+            if not task:
+                print("Usage: /agent <task>")
+                continue
+            from .agents import run_subagent
+            emit("user", text=line)
+            result = run_subagent(task, config, memory)
             print(f"Ada: {result}")
             emit("assistant", text=result)
             continue
@@ -955,14 +1006,6 @@ def hands_free_loop(config: Config, history: list[dict], memory: Memory, speaker
         return
 
     wake_words = [word for word in config.wake_words if word.strip()] or ["ada"]
-    def make_wake_pattern(words):
-        return re.compile(
-            r"\b(?:"
-            + "|".join(re.escape(word) for word in sorted(words, key=len, reverse=True))
-            + r")\b",
-            re.IGNORECASE,
-        )
-    wake_pattern = make_wake_pattern(wake_words)
     if config.flow_mode:
         print("Flow mode: speak naturally without a wake word. I can be interrupted while speaking. Ctrl+C to stop.")
     elif config.require_wake_word:
@@ -975,27 +1018,37 @@ def hands_free_loop(config: Config, history: list[dict], memory: Memory, speaker
         try:
             # in flow mode, allow shorter pauses after assistant replies feel natural
             silence = 0.9 if config.flow_mode else getattr(config, "stt_silence_seconds", 1.2)
-            audio = listener.record_phrase(
-                silence_seconds=silence,
-                status=lambda state: print(
-                    f"[mic] {state}…".ljust(28), end="\r", flush=True
-                )
-            )
+
+            def mic_status(value: str) -> None:
+                print(f"[mic] {value}…".ljust(28), end="\r", flush=True)
+                if value.startswith("recording"):
+                    emit("state", state="listening", detail="recording")
+                elif value.startswith("listening"):
+                    emit(
+                        "state", state="listening",
+                        detail="awaiting wake word" if config.require_wake_word else "microphone",
+                    )
+
+            audio = listener.record_phrase(silence_seconds=silence, status=mic_status)
             if audio is None:
+                emit("state", state="idle", detail="awaiting wake word")
                 continue
+            emit("state", state="transcribing", detail="speech to text")
             print("[stt] transcribing…".ljust(28), end="\r", flush=True)
             text = listener.transcribe(audio)
-            print(" " * 28, end="\r")
+            print(" " * 28, end="\r", flush=True)
             if not text:
+                emit("state", state="idle", detail="no speech detected")
                 continue
+            print(f"[stt] heard: {text!r}", flush=True)
 
             if config.require_wake_word:
                 wake_words = [word for word in config.wake_words if word.strip()] or ["ada"]
-                wake_pattern = make_wake_pattern(wake_words)
-                match = wake_pattern.search(text)
-                if not match:
+                end = find_wake_word(text, wake_words)
+                if end is None:
+                    emit("state", state="idle", detail="wake word not heard")
                     continue
-                text = text[match.end():].lstrip(" ,.!?-")
+                text = text[end:].lstrip(" ,.!?-")
 
             if not text:
                 say(speaker, voice_out, "Yes?")

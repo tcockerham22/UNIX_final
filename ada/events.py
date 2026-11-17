@@ -6,6 +6,7 @@ import queue
 import threading
 import time
 from collections import deque
+from contextlib import contextmanager
 
 HISTORY_LIMIT = 400
 
@@ -63,6 +64,30 @@ class EventBus:
 
 bus = EventBus()
 
+# Per-thread suppression: sub-agents run in their own threads and should not
+# flood the dashboard with their internal tool/state events. Lifecycle events
+# are published with force=True from those threads.
+_quiet = threading.local()
 
-def emit(event_type: str, **data) -> dict:
+
+def set_quiet(quiet: bool) -> bool:
+    """Enable/disable event suppression on the current thread; return previous state."""
+    previous = bool(getattr(_quiet, "active", False))
+    _quiet.active = bool(quiet)
+    return previous
+
+
+@contextmanager
+def quiet_events():
+    """Temporarily suppress ordinary events emitted on this thread."""
+    previous = set_quiet(True)
+    try:
+        yield
+    finally:
+        set_quiet(previous)
+
+
+def emit(event_type: str, *, force: bool = False, **data) -> dict | None:
+    if getattr(_quiet, "active", False) and not force:
+        return None
     return bus.publish(event_type, **data)

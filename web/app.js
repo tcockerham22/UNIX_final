@@ -120,6 +120,7 @@ function stageActive(stage) {
   if (stage === "route") return state.activeStages.has("route");
   if (stage === "skill") return state.activeStages.has("skill");
   if (stage === "memory") return state.activeStages.has("memory");
+  if (stage === "agents") return state.activeStages.has("agents");
   return false;
 }
 
@@ -221,6 +222,14 @@ function handleEvent(event) {
     case "action":
       activateStage("tools", 2500);
       break;
+    case "agent":
+      if (data.status === "start") {
+        activateStage("agents");
+        spawnRipple("learn", 0.85);
+      } else {
+        activateStage("agents", 2500);
+      }
+      break;
     case "user":
       activateStage("input", 1200);
       break;
@@ -270,7 +279,7 @@ function handleEvent(event) {
       }
       break;
     case "assistant":
-      if (state.current === "thinking") setState("idle", "awaiting input");
+      if (state.current === "thinking" && !data.source) setState("idle", "awaiting input");
       state.activeStages.delete("tools");
       break;
     case "error":
@@ -687,6 +696,54 @@ function draw(now) {
   }
   ctx.restore();
 
+  function drawOrbitalTracks(front) {
+    const tracks = [
+      { rx: base * 1.52, ry: base * 0.62, tilt: 0.72, rotation: -0.48, phase: 0.4, speed: 0.22, color: "rgba(255,207,130,0.78)" },
+      { rx: base * 1.34, ry: base * 0.82, tilt: 0.96, rotation: 0.58, phase: 2.2, speed: -0.16, color: palette.core },
+      { rx: base * 1.78, ry: base * 0.48, tilt: 0.54, rotation: 0.08, phase: 4.1, speed: 0.13, color: palette.accent },
+    ];
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.globalCompositeOperation = "lighter";
+    for (const track of tracks) {
+      ctx.save();
+      const trackRotation = track.rotation + Math.sin(t * 0.12 + track.phase) * 0.035;
+      ctx.rotate(trackRotation);
+      const start = front ? 0 : Math.PI;
+      const end = front ? Math.PI : Math.PI * 2;
+      ctx.beginPath();
+      for (let i = 0; i <= 56; i++) {
+        const angle = start + (end - start) * i / 56;
+        const x = Math.cos(angle) * track.rx;
+        const y = Math.sin(angle) * track.ry * Math.cos(track.tilt);
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      ctx.globalAlpha = front ? 0.38 + energy * 0.08 : 0.13 + energy * 0.04;
+      ctx.strokeStyle = track.color;
+      ctx.lineWidth = Math.max(0.8, (front ? 1.25 : 0.9) * ui);
+      ctx.stroke();
+
+      const angle = ((t * track.speed + track.phase) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
+      if (front && Math.sin(angle) > 0) {
+        const x = Math.cos(angle) * track.rx;
+        const y = Math.sin(angle) * track.ry * Math.cos(track.tilt);
+        const rotatedX = x * Math.cos(trackRotation) - y * Math.sin(trackRotation);
+        const rotatedY = x * Math.sin(trackRotation) + y * Math.cos(trackRotation);
+        ctx.globalAlpha = 0.82;
+        ctx.shadowBlur = 9 * ui;
+        ctx.shadowColor = track.color;
+        ctx.fillStyle = palette.accent;
+        ctx.beginPath();
+        ctx.arc(rotatedX, rotatedY, 2.1 * ui, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+    ctx.restore();
+  }
+
+  drawOrbitalTracks(false);
+
   // liquid core: inner orb more stable, outer fluid/waves mode-reactive
   const mode = state.current;
   let timeScale = 1.0;
@@ -705,6 +762,7 @@ function draw(now) {
   const radius = base * (1 + Math.sin(lt * 1.1) * 0.012 * radiusMotion + Math.sin(t * 0.7 + 1.2) * 0.006 * radiusMotion + energy * 0.015 + audio * 0.06 + idleBreath * 0.3);
 
   const spin = (mode === "thinking" || mode === "warming") ? (t * 0.55) : 0;
+  const reactorPulse = reduceMotion ? 1 : 0.94 + Math.sin(t * 1.7) * 0.06;
 
   function blobPath(rBase, phase, ampScale = 1, ampOverride = null, spinOffset = 0) {
     const points = 96;
@@ -764,6 +822,36 @@ function draw(now) {
   ctx.fillStyle = core;
   blobPath(radius, 0.4, 1.0 + audio * 0.2, innerLiquidAmp);
   ctx.fill();
+
+  ctx.globalCompositeOperation = "source-over";
+  ctx.save();
+  blobPath(radius, 0.4, 1.0 + audio * 0.2, innerLiquidAmp);
+  ctx.clip();
+  const scanAngle = reduceMotion ? -Math.PI * 0.62 : t * 0.32;
+  const scanGlow = ctx.createLinearGradient(
+    cx + Math.cos(scanAngle - 0.7) * radius,
+    cy + Math.sin(scanAngle - 0.7) * radius,
+    cx + Math.cos(scanAngle + 0.7) * radius,
+    cy + Math.sin(scanAngle + 0.7) * radius
+  );
+  scanGlow.addColorStop(0, "rgba(255,255,255,0)");
+  scanGlow.addColorStop(0.5, "rgba(255,255,255,0.07)");
+  scanGlow.addColorStop(1, "rgba(255,255,255,0)");
+  ctx.globalAlpha = 0.7;
+  ctx.fillStyle = scanGlow;
+  ctx.fillRect(cx - radius, cy - radius, radius * 2, radius * 2);
+
+  const sphereShade = ctx.createRadialGradient(
+    cx - radius * 0.34, cy - radius * 0.4, radius * 0.06,
+    cx + radius * 0.12, cy + radius * 0.12, radius * 1.18
+  );
+  sphereShade.addColorStop(0, "rgba(255,255,255,0)");
+  sphereShade.addColorStop(0.58, "rgba(4,12,24,0.04)");
+  sphereShade.addColorStop(1, "rgba(2,7,18,0.62)");
+  ctx.globalAlpha = 0.72;
+  ctx.fillStyle = sphereShade;
+  ctx.fillRect(cx - radius * 1.2, cy - radius * 1.2, radius * 2.4, radius * 2.4);
+  ctx.restore();
 
   ctx.globalCompositeOperation = "screen";
   const inner = ctx.createRadialGradient(cx - radius * 0.15, cy - radius * 0.1, radius * 0.02, cx, cy, radius * 0.95);
@@ -846,6 +934,47 @@ function draw(now) {
     ctx.globalCompositeOperation = "source-over";
   }
 
+  ctx.globalCompositeOperation = "lighter";
+  const flare = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius * 0.42);
+  flare.addColorStop(0, "rgba(255,255,255,0.95)");
+  flare.addColorStop(0.08, palette.accent);
+  flare.addColorStop(0.32, palette.core);
+  flare.addColorStop(1, "rgba(0,0,0,0)");
+  ctx.globalAlpha = (0.18 + energy * 0.14 + audio * 0.08) * flicker;
+  ctx.fillStyle = flare;
+  ctx.beginPath();
+  ctx.arc(cx, cy, radius * 0.42 * reactorPulse, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.globalAlpha = 0.76;
+  ctx.fillStyle = "#ffffff";
+  ctx.beginPath();
+  ctx.arc(cx, cy, Math.max(1.2, radius * 0.025), 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.restore();
+
+  drawOrbitalTracks(true);
+
+  // Fine segmented hardware rings add a restrained instrument-panel finish.
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.globalCompositeOperation = "lighter";
+  for (let ring = 0; ring < 2; ring++) {
+    const rr = radius * (ring === 0 ? 1.13 : 1.24);
+    const segments = ring === 0 ? 32 : 16;
+    const rotation = (ring === 0 ? 1 : -1) * t * (ring === 0 ? 0.08 : 0.045);
+    ctx.strokeStyle = ring === 0 ? palette.ring : palette.accent;
+    ctx.lineWidth = Math.max(0.7, ui * (ring === 0 ? 0.8 : 1));
+    ctx.globalAlpha = ring === 0 ? 0.22 + energy * 0.08 : 0.13 + energy * 0.05;
+    for (let i = 0; i < segments; i++) {
+      if (ring === 0 && i % 4 === 3) continue;
+      const start = rotation + i * Math.PI * 2 / segments;
+      const span = (Math.PI * 2 / segments) * (ring === 0 ? 0.58 : 0.42);
+      ctx.beginPath();
+      ctx.arc(0, 0, rr, start, start + span);
+      ctx.stroke();
+    }
+  }
   ctx.restore();
 
   // feedback micro-transition ripples/pulses
@@ -939,6 +1068,7 @@ function draw(now) {
     { key: "tools", label: "Tools" },
     { key: "skill", label: "Skill" },
     { key: "memory", label: "Memory" },
+    { key: "agents", label: "Agents" },
     { key: "model", label: "Model" },
     { key: "voice", label: "Voice" },
   ];

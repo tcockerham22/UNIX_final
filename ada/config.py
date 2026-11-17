@@ -184,6 +184,8 @@ class Config:
     stt_vad_filter: bool = True
     stt_silence_seconds: float = 1.2
     stt_max_seconds: float = 20.0
+    stt_sensitivity: float = 0.5  # 0 = ignore background noise, 1 = very sensitive mic
+    stt_debug: bool = False  # print detected mic levels in the [mic] status line
     input_device: str | None = None
 
     search_results: int = 5
@@ -203,6 +205,15 @@ class Config:
 
     # Learning
     learn_depth: str = "deep"  # quick | deep
+
+    # Sub-agents (delegated tool loops). Blank agent_model uses the light model.
+    agents_enabled: bool = True
+    agent_model: str = ""
+    agent_max_rounds: int = 6
+    agent_max_tokens: int = 2048
+    agent_timeout_s: int = 120
+    agent_max_workers: int = 3
+    agent_tools: list[str] = field(default_factory=list)  # empty = safe read-only default set
 
     # Auto memory
     auto_memory: bool = True

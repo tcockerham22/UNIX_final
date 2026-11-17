@@ -114,7 +114,9 @@ def _reminder_loop():
         for r in due:
             msg = str(r.get("message", "Reminder"))
             emit("notification", kind="reminder", message=msg, at=r.get("at"))
-            emit("assistant", text=f"Reminder: {msg}")
+            # Tagged so the dashboard doesn't mistake this for Ada's reply and
+            # drop out of THINKING mid-response.
+            emit("assistant", text=f"Reminder: {msg}", source="reminder")
 
 
 def _uploads_dir() -> Path:
@@ -952,6 +954,8 @@ TOOLS = [
     {"type": "function", "function": {"name": "search_files", "description": "Search for text in files within a path (grep-like).", "parameters": {"type": "object", "properties": {"query": {"type": "string"}, "path": {"type": "string"}, "glob": {"type": "string"}, "max_results": {"type": "integer"}}, "required": ["query"]}}},
     {"type": "function", "function": {"name": "workspace_info", "description": "Get workspace/project info including git status and detected project type.", "parameters": {"type": "object", "properties": {"path": {"type": "string"}}}}},
     {"type": "function", "function": {"name": "project_tasks", "description": "Detect common test/build/run tasks for a project.", "parameters": {"type": "object", "properties": {"path": {"type": "string"}}}}},
+    {"type": "function", "function": {"name": "spawn_agent", "description": "Delegate one self-contained task to a sub-agent with its own tools and context. It works independently and returns a concise final result. Use for research, analysis, or work that would bloat your own context. Sub-agents are read-only by default and cannot spawn further agents.", "parameters": {"type": "object", "properties": {"task": {"type": "string", "description": "A complete, self-contained description of the task and what result you need back."}, "model_tier": {"type": "string", "enum": ["light", "moderate", "deep"], "description": "Optional model tier for the agent (default: light/fast)."}, "tools": {"type": "array", "items": {"type": "string"}, "description": "Optional list of tool names the agent may use (default: read-only set)."}}, "required": ["task"]}}},
+    {"type": "function", "function": {"name": "spawn_agents", "description": "Run several independent sub-tasks in parallel using multiple sub-agents and return all results. Use when the tasks do not depend on each other.", "parameters": {"type": "object", "properties": {"tasks": {"type": "array", "items": {"type": "string"}, "description": "List of self-contained tasks, one per agent."}, "model_tier": {"type": "string", "enum": ["light", "moderate", "deep"], "description": "Optional model tier for the agents (default: light/fast)."}}, "required": ["tasks"]}}},
     {"type": "function", "function": {"name": "ha_get_states", "description": "List Home Assistant entity states (optionally by domain).", "parameters": {"type": "object", "properties": {"domain": {"type": "string"}}}}},
     {"type": "function", "function": {"name": "ha_get_state", "description": "Get one Home Assistant entity's state and attributes.", "parameters": {"type": "object", "properties": {"entity_id": {"type": "string"}}, "required": ["entity_id"]}}},
     {"type": "function", "function": {"name": "ha_call_service", "description": "Call a Home Assistant service (e.g. turn on a light, trigger automation).", "parameters": {"type": "object", "properties": {"domain": {"type": "string"}, "service": {"type": "string"}, "entity_id": {"type": "string"}, "data": {"type": "object"}}, "required": ["domain", "service"]}}},
@@ -1090,6 +1094,21 @@ def run_tool(name: str, args: dict, memory: "Memory", config: "Config") -> str:
             if isinstance(pe, str):
                 pe = pe.strip().lower() in {"1", "true", "yes", "on"}
             return read_upload(str(args.get("name", "")), bool(pe), config=config)
+        if name in ("spawn_agent", "spawn_agents"):
+            # Imported lazily: agents.py imports this module for its tool schemas.
+            from .agents import run_agents, run_subagent
+
+            tier = args.get("model_tier") or None
+            tier = str(tier).strip().lower() if tier is not None else None
+            if name == "spawn_agent":
+                return run_subagent(
+                    str(args.get("task", "")), config, memory,
+                    model_tier=tier, tools=args.get("tools"),
+                )
+            tasks = args.get("tasks")
+            if isinstance(tasks, str):
+                tasks = [t.strip() for t in re.split(r"[\n;]+", tasks) if t.strip()]
+            return run_agents(tasks or [], config, memory, model_tier=tier)
         return f"ERROR: unknown tool {name!r}."
     except Exception as err:
         return f"ERROR: {name} failed ({type(err).__name__}: {err})."

@@ -42,13 +42,31 @@ class Listener:
         input_device=None,
         beam_size: int = 5,
         vad_filter: bool = True,
+        sensitivity: float = 0.5,
+        debug: bool = False,
     ):
         self.model_name = model_name
         self.input_device = resolve_device(input_device, "input")
         self.beam_size = max(1, int(beam_size))
         self.vad_filter = bool(vad_filter)
+        self.sensitivity = max(0.0, min(1.0, float(sensitivity)))
+        self.debug = bool(debug)
         self._model = None
         self.last_audio_seconds = 0.0
+
+    def _thresholds(self, noise_floor: float, barge_in: bool = False) -> tuple[float, float]:
+        """Noise-relative voice thresholds. Higher sensitivity lowers them."""
+        s = self.sensitivity
+        onset_max = 0.09 if barge_in else 0.05
+        silence_max = 0.05 if barge_in else 0.035
+        onset = noise_floor * (2.8 - 1.8 * s) + (0.008 if barge_in else 0.006)
+        silence = noise_floor * (2.1 - 1.2 * s) + (0.006 if barge_in else 0.004)
+        return max(0.006, min(onset_max, onset)), max(0.005, min(silence_max, silence))
+
+    def _status_text(self, state: str, level: float = 0.0, onset: float = 0.0) -> str:
+        if self.debug:
+            return f"{state} level={level:.3f} onset={onset:.3f} sens={self.sensitivity:.2f}"
+        return state
 
     def load(self) -> None:
         if self._model is not None:
@@ -124,12 +142,12 @@ class Listener:
             for _ in range(20):
                 sample = stream.read(block)[0][:, 0]
                 ambient.append(_rms(sample - sample.mean()))
-            noise_floor = float(np.median(ambient)) if ambient else 0.0
-            onset = max(0.012, min(0.07, noise_floor * 3.5))
-            silence_threshold = max(0.008, min(0.045, noise_floor * 2.2))
+            # A low percentile avoids a passing noise spike inflating the floor.
+            noise_floor = float(np.percentile(ambient, 40)) if ambient else 0.0
+            onset, silence_threshold = self._thresholds(noise_floor)
 
             if status:
-                status("listening")
+                status(self._status_text("listening", noise_floor, onset))
             preroll = deque(maxlen=max(1, int(preroll_seconds / BLOCK_SECONDS)))
             frames: list[np.ndarray] = []
             started = None
@@ -143,25 +161,28 @@ class Listener:
                 mono -= mono.mean()
                 level = _rms(mono)
                 preroll.append(mono)
+                # Compare speech against the ambient floor, not absolute silence.
+                excess = max(0.0, level - noise_floor)
 
                 if started is None:
-                    loud_blocks = loud_blocks + 1 if level > onset else max(0, loud_blocks - 1)
+                    loud_blocks = loud_blocks + 1 if excess > onset else max(0, loud_blocks - 1)
                     if loud_blocks >= 3:
                         started = time.time()
                         last_voice = started
                         frames.extend(preroll)
                         if status:
-                            status("recording")
+                            status(self._status_text("recording", level, onset))
                     elif time.time() - began > start_timeout:
                         return None
                 else:
                     frames.append(mono)
                     now = time.time()
-                    if level > silence_threshold:
+                    if excess > silence_threshold:
                         last_voice = now
                     else:
-                        noise_floor = 0.985 * noise_floor + 0.015 * level
-                        silence_threshold = max(0.008, min(0.045, noise_floor * 2.2))
+                        # Adapt slowly; fast adaptation can absorb sustained speech.
+                        noise_floor = 0.995 * noise_floor + 0.005 * level
+                        _, silence_threshold = self._thresholds(noise_floor)
                     if now - last_voice > silence_seconds or now - started > max_seconds:
                         break
 
@@ -197,9 +218,8 @@ class Listener:
                     return None
                 sample = stream.read(block)[0][:, 0]
                 ambient.append(_rms(sample - sample.mean()))
-            noise_floor = float(np.median(ambient)) if ambient else 0.0
-            onset = max(0.014, min(0.09, noise_floor * 4.0 + 0.006))
-            silence_threshold = max(0.009, min(0.05, noise_floor * 2.3))
+            noise_floor = float(np.percentile(ambient, 40)) if ambient else 0.0
+            onset, silence_threshold = self._thresholds(noise_floor, barge_in=True)
             preroll = deque(maxlen=max(1, int(0.45 / BLOCK_SECONDS)))
             frames = []
             started = None
@@ -215,10 +235,11 @@ class Listener:
                 mono -= mono.mean()
                 level = _rms(mono)
                 preroll.append(mono)
+                excess = max(0.0, level - noise_floor)
 
                 if started is None:
                     # while assistant is speaking, require a bit more evidence to avoid echo/self-trigger
-                    loud_blocks = loud_blocks + 1 if level > onset else max(0, loud_blocks - 1)
+                    loud_blocks = loud_blocks + 1 if excess > onset else max(0, loud_blocks - 1)
                     need = 4
                     if loud_blocks >= need:
                         started = time.time()
@@ -227,12 +248,11 @@ class Listener:
                 else:
                     frames.append(mono)
                     now = time.time()
-                    if level > silence_threshold:
+                    if excess > silence_threshold:
                         last_voice = now
                     else:
-                        noise_floor = 0.99 * noise_floor + 0.01 * level
-                        silence_threshold = max(0.009, min(0.05, noise_floor * 2.3))
-                        onset = max(0.014, min(0.09, noise_floor * 4.0 + 0.006))
+                        noise_floor = 0.995 * noise_floor + 0.005 * level
+                        onset, silence_threshold = self._thresholds(noise_floor, barge_in=True)
                     if now - last_voice > silence_seconds or now - started > 20.0:
                         break
 

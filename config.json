@@ -29,6 +29,8 @@
   "stt_vad_filter": true,
   "stt_silence_seconds": 1.2,
   "stt_max_seconds": 20.0,
+  "stt_sensitivity": 0.5,
+  "stt_debug": false,
   "wake_words": [
     "hey ada",
     "hi ada",
@@ -45,6 +47,18 @@
   "input_device": null,
   "search_results": 5,
   "web_enabled": true,
-  "web_host": "0.0.0.0", 
-  "web_port": 8765
+  "web_host": "0.0.0.0",
+  "web_port": 8765,
+  "agents_enabled": true,
+  "agent_model": "",
+  "agent_max_rounds": 6,
+  "agent_max_tokens": 2048,
+  "agent_timeout_s": 120,
+  "agent_max_workers": 3,
+  "agent_tools": [
+    "web_search",
+    "read_file",
+    "write_file",
+    "run_command"
+  ]
 }
