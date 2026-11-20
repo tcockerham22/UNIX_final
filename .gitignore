@@ -1,0 +1,23 @@
+# --- Secrets: never commit these ---
+.env
+*.env
+*.tfvars
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl.bak
+*.pem
+*.key
+*credentials*.json
+service-account*.json
+
+# --- Python ---
+__pycache__/
+*.pyc
+.venv/
+
+# --- Editors / OS ---
+.DS_Store
+*.swp
+.vscode/
+.idea/
