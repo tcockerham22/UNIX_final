@@ -1,4 +1,8 @@
 ---
+# Data tier: PostgreSQL + pgvector (Member 1).
+# Run from the repo root:
+#   sudo -E docker compose -f compose/docker-compose.db.yml up -d
+# DB_PASSWORD must be exported first (from Secret Manager in the real deploy).
 services:
   db:
     image: pgvector/pgvector:0.8.0-pg16
@@ -7,7 +11,7 @@ services:
     environment:
       POSTGRES_USER: raguser
       POSTGRES_DB: ragdb
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD must be set}
     ports:
       - "127.0.0.1:5432:5432"
     volumes:
