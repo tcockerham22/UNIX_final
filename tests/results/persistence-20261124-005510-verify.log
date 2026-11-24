@@ -1,0 +1,13 @@
+=== Persistence test (verify) ===
+date:     2026-11-24T00:55:10+00:00
+host:     person1-unix-final
+
+--- 1. Storage ---
+/dev/mapper/vg_data-lv_db ext4   /data/db
+PASS: /data/db is mounted from an LVM logical volume
+--- 2. After reboot ---
+PASS: database container is healthy (restart policy worked)
+PASS: probe row 'probe-1795481576' survived the reboot
+chunks rows: 30
+
+RESULT: PASS

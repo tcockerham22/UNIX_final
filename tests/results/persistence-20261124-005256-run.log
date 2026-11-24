@@ -1,0 +1,33 @@
+=== Persistence test (run) ===
+date:     2026-11-24T00:52:56+00:00
+host:     person1-unix-final
+
+--- 1. Storage ---
+/dev/mapper/vg_data-lv_db ext4   /data/db
+PASS: /data/db is mounted from an LVM logical volume
+--- 2. Write a probe row ---
+NOTICE:  relation "persistence_probe" already exists, skipping
+wrote probe-1795481576
+chunks rows before: 30
+--- 3. Remove and re-create the container ---
+ Container rag-db Stopping 
+ Container rag-db Stopped 
+ Container rag-db Removing 
+ Container rag-db Removed 
+ Network compose_backend Removing 
+ Network compose_backend Removed 
+PASS: container removed
+ Network compose_backend Creating 
+ Network compose_backend Created 
+ Container rag-db Creating 
+ Container rag-db Created 
+ Container rag-db Starting 
+ Container rag-db Started 
+PASS: new container is healthy
+--- 4. Check the data ---
+PASS: probe row survived container re-creation
+chunks rows after: 30
+PASS: chunk count unchanged
+
+RESULT: PASS
+Next: sudo reboot, then run:  sudo -E ./tests/persistence-test.sh verify
