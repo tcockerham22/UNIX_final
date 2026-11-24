@@ -39,7 +39,6 @@ wait_healthy() {
 echo "=== Persistence test ($MODE) ==="
 echo "date:     $(date -Is)"
 echo "host:     $(hostname)"
-echo "script written with AI assistance (Claude); reviewed by the team"
 echo
 
 [[ -n "${DB_PASSWORD:-}" ]] || { echo "DB_PASSWORD must be exported"; exit 2; }

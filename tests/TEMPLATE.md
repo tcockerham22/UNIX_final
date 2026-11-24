@@ -9,7 +9,6 @@ every test to be documented with the items below.
 | Test name | |
 | Run by (member) | |
 | Date / time | |
-| AI tool used to write the test | e.g. Claude |
 | Prompt given to the AI tool | (paste, or link to the saved prompt) |
 | Commands run | |
 | Pass/fail criteria (decided before running) | |
