@@ -1,0 +1,640 @@
+Pepper’s Cone: An Inexpensive Do-It-Yourself 3D Display
+                 Xuan Luo1                                                     Jason Lawrence2                           Steven M. Seitz1,2
+        xuanluo@cs.washington.edu                                             jdlaw@google.com                       seitz@cs.washington.edu
+         1 University of Washington                                               2 Google Inc.
+
+             Seattle, WA, USA                                                  Seattle, WA, USA
+
+
+
+
+                  (a)                                           (b)                                  (c)                               (d)
+Figure 1. Our 3D display consists of (a) an iPad, a thin hollow plastic cone, and a rotatable base. The nickel at the base provides stability. (b-c) As
+the user rotates the display, the system renders a perspective-correct image for their point of view that gives a convincing impression of a 3D object
+suspended inside the cone. This provides a simple way of interactively examining a 3D scene for a fraction of the cost of alternative volumetric or
+light ﬁeld displays and doesn’t require the use of special glasses. (d) The system can be extended to produce correct binocular cues by incorporating
+stereoscopic rendering and glasses.
+
+
+ABSTRACT                                                                                     INTRODUCTION
+This paper describes a simple 3D display that can be built from                              People have long been fascinated by the promise of true “holo­
+a tablet computer and a plastic sheet folded into a cone. This                               graphic” or “volumetric” displays. Indeed, reproducing the
+display allows viewing a three-dimensional object from any                                   appearance of an object in a way that allows viewing it from
+direction over a 360-degree path of travel without the use of                                any direction, without the aid of a head-mounted display or
+special glasses. Inspired by the classic Pepper’s Ghost illusion,                            special glasses, is the most natural way to convey its three-
+our approach uses a curved transparent surface to reﬂect the                                 dimensional shape. However, delivering this type of experi­
+image displayed on a 2D display. By properly pre-distorting                                  ence is challenging. There are currently no consumer displays
+the displayed image our system can produce a perspective-                                    that achieve this type of interaction and existing glasses-free
+correct image to the viewer that appears to be suspended inside                              volumetric and light ﬁeld displays involve complex and expen­
+the reﬂector. We use the gyroscope integrated into modern                                    sive setups that still fall short of this lofty goal.
+tablets to adjust the rendered image based on the relative
+orientation of the viewer. Our particular reﬂector geometry                                  We introduce a very simple “3D” display based on the Pep­
+was determined by analyzing the optical performance and                                      per’s Ghost illusion, a 19th century stage technique named
+stereo-compatibility of a space of rotationally-symmetric conic                              after John Pepper [6]. This effect involves projecting a person
+surfaces. We present several prototypes along with side-by­                                  or object from a hidden room or screen onto a physical stage
+                                                                                             through the use of a large half-silvered mirror or other reﬂec­
+side comparisons with reference images.
+                                                                                             tive surface. This technique has found a recent resurgence
+ACM Classiﬁcation Keywords
+                                                                                             in popularity [1, 23] and is used for high-proﬁle “live” stage
+                                                                                             performances [8, 12].
+H.5.1. [Information interfaces and presentation]: Multimedia
+Information Systems – Artiﬁcial, augmented, and virtual reali­                               While this illusion traditionally involves a planar reﬂector,
+ties; I.3.7 [Computer Graphics]: Three-Dimensional Graphics                                  we introduce a variant based on a curved reﬂector and im­
+and Realism – Virtual reality                                                                plementation on a gyro-enabled commodity tablet PC. This
+                                                                                             enables the user to interactively view the displayed object over
+Author Keywords                                                                              a full 360-degree rotation and produces the sensation that it
+3D Displays; Pepper’s Ghost; Computer Graphics.                                              is suspended above the tablet. Supporting curved reﬂectors
+                                                                                             requires a calibration and pre-distortion process to ensure that
+Permission to make digital or hard copies of all or part of this work for personal or        the image as viewed through the display is perspective-correct.
+classroom use is granted without fee provided that copies are not made or distributed        We call our display Pepper’s Cone.
+for proﬁt or commercial advantage and that copies bear this notice and the full citation
+on the ﬁrst page. Copyrights for components of this work owned by others than ACM
+must be honored. Abstracting with credit is permitted. To copy otherwise, or republish,
+                                                                                             Shown in Figure 1, our display consists of a truncated plas­
+to post on servers or to redistribute to lists, requires prior speciﬁc permission and/or a   tic cone resting on a conventional ﬂat 2D display. When
+fee. Request permissions from permissions@acm.org.                                           viewed from the side, the user sees a distorted reﬂection of the
+ UIST 2017, October 22–25, 2017, Quebec City, QC, Canada                                     display that appears to be located inside the reﬂector. By pre­
+© 2017 ACM. ISBN 978-1-4503-4981-9/17/10. . . $15.00
+DOI: https://doi.org/10.1145/3126594.3126602
+warping the image on the ﬂat display in order to compensate         of many small optical scatterers, like fog, falling drops of
+for the distortion introduced by the reﬂector, we can deliver a     water [3], scatterers produced through laser etching [25], etc.
+perspective-correct image at a desired viewpoint. Finally, by       Although volumetric displays provide correct stereo and paral­
+querying the tablet’s gyroscope, we allow the user to smoothly      lax cues and can accommodate multiple simultaneous viewers,
+and interactively view a three-dimensional scene from any           few can reproduce proper occlusions and view-dependent ef­
+direction over a full 360-degree path by physically rotating the    fects like specular highlights. They also often suffer from low
+display in front of them.                                           resolution due to the higher bandwidth required to refresh a
+                                                                    volume of display elements at an acceptable frame rate. In
+To arrive at the cone shape, we analyzed the space of               contrast, our setup leverages the high resolution of modern
+rotationally-symmetric conic surfaces (cones, paraboloids, el­      tablet displays and can accurately reproduce view-dependent
+lipsoids, hyperboloids). Speciﬁcally, we developed quantita­
+                                                                    effects (e.g., the shiny surface of the car in Figure 13).
+tive measures of the desirable optical properties of the reﬂector
+surface and performed an optimization to ﬁnd the best reﬂec­        Holographic displays use laser interference to reproduce
+tor for a speciﬁc 2D display. In the case of an iPad Pro, we        a continuous light ﬁeld. Researchers have developed holo­
+recommend using a 51◦ cone.                                         graphic displays using a variety of materials and optical de­
+                                                                    signs [21, 18, 29, 14, 33, 5]. Nevertheless, widely available
+We also performed a study of binocular stereopsis cues for          high resolution and high frame rate holographic displays are
+this class of displays. One of the biggest challenges with 3D
+                                                                    still years away.
+displays is achieving proper stereopsis; indeed, we have found
+that curved reﬂectors can produce images at each eye that are       Head-mounted displays can achieve a stunning sense of im­
+uncomfortable or impossible to fuse. To this end, we included       mersion [31, 7]. Only recently has the necessary combination
+a measure of stereo divergence in our analysis, measured as         of low-latency displays and mobile high-bandwidth GPUs en­
+the degree of vertical parallax between the user’s two eyes, and    abled large-scale consumer VR efforts such as the Oculus Rift,
+seek reﬂector shapes that minimize this effect. The Pepper’s        HTC Vive, and Google Cardboard. Augmented reality (AR)
+Cone produces a fuseable image over most of its surface, with       displays such as the Microsoft Hololens overlay imagery onto
+the perceived object (based on binocular cues) appearing to lie     the physical world through the use of micro projectors and
+just inside the cone.                                               mirrors or transparent waveguides. Although our display does
+                                                                    not achieve the same expansive viewing volume as many of
+While our display is stereo-compatible, there remains a mis­        these systems, it also doesn’t require the use of head mounts
+match between binocular and monocular cues, which can re­           or special glasses, providing a more natural user experience.
+duce the effect of depth perception. We show that this remain­
+ing conﬂict can be eliminated by introducing stereo glasses         Autostereoscopic and light ﬁeld displays are able to present
+and projecting separate images to each eye. Keeping with our        a correct left/right stereoscopic image pair to a viewer over
+theme of an inexpensive do-it-yourself setup, we demonstrate        some viewing range without the need of special glasses [9].
+a prototype that uses paper Red-Blue anaglyph glasses. We           Bonding a spherical lenslet array [24], cylindrical lenticular
+call this modiﬁcation binocular correction.                         array [22], or parallax barrier [15] onto a conventional high-
+                                                                    resolution 2D display is a popular approach. Another option
+Our 3D display can be built in an afternoon for a tiny invest­      is to combine multiple projectors using a reﬂective or trans­
+ment beyond the tablet computer. We have built 3D displays          missive screen that has a very narrow scattering proﬁle [2,
+using reﬂectors as common as a plastic cup (Sec. 6.2). It can       22, 17]. Xia et al. [37] use light ﬁeld generation to achieve a
+be used for a number of applications in education, medicine,        360-degree surround viewable volumetric display with proper
+art, product exhibition, telepresence, and virtual assistants.      occlusion. Jones et al. [16] combine a fast spinning slanted
+This paper describes how to build a Pepper’s Cone display,          anisotropic mirror with a synchronized projector to reproduce
+analyzes the design space and introduces binocular correction.
+                                                                    a light ﬁeld that can be viewed from any angle.
+We show results on both synthetic and captured objects.
+                                                                    An important beneﬁt of many of these methods is that they
+PRIOR WORK                                                          show the proper image to the viewer’s left and right eye. Some
+This paper is related to a number of ﬁelds ranging from volu­       can also simultaneously accommodate multiple viewers. On
+metric and light ﬁeld displays to head-mounted virtual reality      the other hand, these displays are signiﬁcantly more expensive
+(VR) and augmented reality (AR) systems. Although our sim­          and complex to create than our simple “do-it-yourself” ap­
+ple 3D display does not support the full range of head motion,      proach. Further, we show how our display can achieve correct
+it provides a compelling "look around" 360-degree viewing ex­       stereoscopic views by incorporating traditional stereoscopic
+perience at a fraction of the cost and complexity of alternative    rendering methods (Section 5).
+systems without requiring a head mount or special glasses.
+                                                                    More recently, researchers have explored stacked arrange­
+Volumetric displays achieve a 3D volume of individually             ments of printed transparencies [35] and planar LCD pan­
+addressable display elements through various means. One             els [19, 36]. Although these systems can theoretically recon­
+approach is to synchronize a projector or other conventional        struct a light ﬁeld with proper focus cues, they do not allow
+display with a 2D screen or mirror that is swept over a 3D          examining an object from all sides, and current prototypes
+volume at high speed [27, 28]. Due to persistence of vision,        are either limited to static scenes or are more complex and
+the user perceives a stationary 3D entity. Another approach is      expensive than ours.
+to use a projector to selectively illuminate a volume composed
+Figure 2. Two do-it-yourself "holograms" with pyramid reﬂectors.
+                                                                                     (a)                   (b)                   (c)
+These prior systems do not perform the necessary distortion to achieve   Figure 3. (a) Double reﬂections caused by a reﬂector that is too thick
+perspective-correct views and use non-ideal reﬂector shapes that have    (4.2mm). Thin-ﬁlm interference effects are visible in thinner materials
+undesirable seams and are difﬁcult to fuse at oblique viewing angles.    such as (b) 0.5mm PETG plastic and (c) 0.17mm PETG plastic.
+                                                                                                            .
+
+Pepper’s Ghost displays refer to the use of a centuries old
+stage technique that causes a displayed object to appear to              Hardware
+ﬂoat in air. Our work was inspired by the commercial Holus               As illustrated in Figure 1(a), our display consists of a tablet
+display [13] along with other related “do-it-yourself hologram”          computer, a reﬂector, and a base that lets the user easily rotate
+videos on YouTube1 (Figure 2). These systems employ a                    the entire assembly. Although there are potentially many em­
+Pepper’s Ghost technique using a tablet computer and a four-             bodiments that meet these speciﬁcations, we made a number
+sided pyramid. Although the effect is surprisingly compelling,           of observations about important aspects of this design space.
+such systems have a number of drawbacks due to their use
+of planar mirrors. First, the seam along the edge of each                Tablet
+face disrupts the viewing experience and increases sensitivity           Our display includes a tablet computer that integrates a high-
+to calibration errors and viewing position. Second, the 3D               resolution display, dedicated real-time graphics hardware, and
+illusion often fails when viewed from oblique angles since, for          a low-latency gyroscope. Unsurprisingly, a tablet with a large
+such cases, it is normally impossible to approximate correct             high-resolution display is desirable as this achieves better
+stereoscopic cues.                                                       overall image quality and creates a larger display volume.
+                                                                         Besides, a rendering system that can generate high-quality
+Movie-Maps [20] and Anamorphicons [30] deploy curved                     images at least 30fps is recommended, which seems to be
+mirrors placed on a ﬂat display to achieve a similar anamorphic          readily obtainable in modern tablet computers using GPUs.
+effect. The Movie-Maps system displays distorted panoramic               Finally, our display uses the built-in gyroscope to track the
+images that are meant to be viewed through a conical mirror.             user’s vantage point. The latency of the gyroscope is another
+Anamorphicons uses a cylindrical mirror in conjunction with a            important factor as this directly impacts end-to-end system lag
+tablet computer in a way that allows rotating the mirror itself in       (Section 6.1).
+order to rotate the displayed object. However, neither of these
+systems properly pre-distort the images on the ﬂat display to            Reﬂector
+account for the distortion from the curved reﬂectornor do they           The reﬂector can potentially have a wide range of shapes, sizes
+consider the same type of semi-transparent display surfaces              and material properties. We explored a number of different
+that we explore. Another paper closely related to ours is the            options, some of which are shown in Figures 1 and 14, and
+Virtual Showcase [4], which consists of either a curved or               make a number of useful observations.
+polyhedral reﬂector placed on top of a large tabletop display.
+It achieves a 3D effect through the combination of a Pepper’s            Although many different reﬂector geometries could be used,
+Ghost illusion, the use of stereo shutter glasses, and a head-           we focus on surfaces of revolution, as they provide a consistent
+tracker. One important limitation of this system is that it              shape under object rotations, and greatly simplify the calibra­
+requires the user to wear a head-mounted motion tracker and is           tion and rendering process (Section 3.2) since the geometric
+also a rather complicated and expensive setup. In contrast, our          relationship between each pixel in the tablet’s display and its
+display relies on easily sourced materials and can be assembled          corresponding reﬂection direction is independent of the orien­
+in only a few minutes. Our system also achieves a smooth                 tation of the display with respect to the viewer. However, a
+viewing experience during object rotations without the use               curved reﬂector can produce images that are uncomfortable
+of glasses or head mounts. Additionally, to the best of our              to fuse. So in Section 4, we evaluate the comfortable viewing
+knowledge, our analysis of the optimal reﬂector shape and                region of all rotationally-symmetric conic reﬂectors and ﬁnd
+the conditions under which comfortable binocular fusion is               ideal reﬂector shapes for different display sizes.
+achieved for these types of displays is original.                        The optical performance of the reﬂector also depends on its
+                                                                         material properties. The surface should be very smooth and
+THE PEPPER’S CONE 3D DISPLAY                                             shiny to produce a sharp and smooth reﬂection of the display.
+In this section we review the major hardware and software                It should also have uniform reﬂectance across wavelengths to
+components of our display along with key design trade-offs.              prevent color artifacts and undesirable intensity modulation. In
+Later sections analyze the reﬂector design space and present             our experience, commonly found polyethylene terephthalate
+experimental results and a preliminary user study.                       (PETG) plastic works well.
+1 https://www.youtube.com/watch?v=7YWTtCsvgvg                            The thickness of the reﬂector is another important factor in the
+https://www.youtube.com/watch?v=nh91P1RslEU                              system design. As shown in Figure 3, reﬂectors that are too
+Figure 4. Left: A pre-warped image that is displayed on the tablet.
+Right: The distortion caused by the reﬂection from the cone produces
+a perspective-correct image to the viewer.
+
+
+thick result in visible double reﬂections and those that are very
+thin have noticeable color artifacts due to wave interference.
+We also experimented with solid opaque reﬂectors, which                          Figure 6. Our calibration setup consists of (top) a Pepper’s Cone display
+would avoid these issues altogether, but found that they failed                  and a calibration camera placed at the desired viewing location. We
+                                                                                 record a video while (bottom) a series of green and magenta striped pat­
+to achieve the desired effect of making the 3D object appear                     terns are displayed on the tablet that assign each pixel a unique binary
+to be ﬂoating above the tablet, inside the reﬂector; transparent                 code [38]. This allows establishing a sparse set of correspondences be­
+reﬂectors provided a much stronger illusion.                                     tween pixels in the calibration camera and pixels in the tablet display.
+
+Distortion Calibration
+Our goal is to produce a perspective-correct image to someone
+who is viewing our display from the side. Because the reﬂector                   to as the distortion map. Note that this distortion map allows
+is curved it will show a distorted reﬂection of the tablet’s                     “displaying” a target image I(u, v) on the virtual image plane
+display. Therefore, some type of calibration is required to                      by displaying the warped image I(f(s,t)) on the tablet display.
+determine how to warp the image that is shown on the tablet
+to compensate for this distortion (Figure 4).                                    We make two important assumptions about the distortion map
+                                                                                 to make its estimation tractable. First, we assume that both e
+Problem statement                                                                and f exist. This would not be the case for setups that cause
+To help describe the calibration problem and our proposed                        multiple tablet locations to be superimposed along the same
+solution, consider the coordinate system in Figure 5. We                         viewing ray (e.g., a thick reﬂector that shows double reﬂections
+assume the tablet display is centered at the origin and that the                 as in Figure 3). We ignore these situations. Second, we
+viewer is located at v̂ = (0, y, z), a distance y above the plane                assume the reﬂector geometry can be constructed by sweeping
+of the tablet’s display and a distance z away from the center                    a 1D curve around the y-axis. This allows us to estimate
+of the tablet. The user may rotate the display surface by an                     the distortion map f for only a single rotation angle (θ =
+angle θ around the y-axis. Finally, imagine a virtual camera is                  0◦ ) and then trivially compute f for any rotation angle by
+located at the viewer’s position as this provides a convenient                   simply composing f with a 2D rotation by θ around the y-axis:
+way of parameterizing the cone of rays that are visible to the                   I (f (Rθ (s,t))). If the reﬂector does not have this property,
+viewer. Speciﬁcally, the ray through a point p̂ = (u, v) on                      then f would need to be estimated over a dense set of rotation
+the image plane of this virtual camera is redirected by the                      angles, complicating the calibration process.
+reﬂector and intersects the tablet display at the point q̂ = (s,t)
+or, equivalently, the viewer would observe the tablet pixel at p̂                Estimation
+along this viewing ray.                                                          We estimate the distortion map f in three steps. First, we
+Consider the optical transfer function e : p̂ → q̂ that maps                     recover samples of e over a discrete domain using a method
+points on the virtual image plane of the virtual camera to                       similar to environment matting [38]. Second, we compute the
+points on the tablet display. The goal of our calibration is to                  inverse of these samples to produce a sparse reconstruction of
+compute the inverse of this function f = e−1 , which we refer                    f. Finally, we perform a data interpolation and smoothing step
+                                                                                 to ﬁll in any holes.
+                                                                                 As shown in Figure 6, we place a calibration camera at v̂
+                                                                                 and record a video as a series of alternating horizontal and
+                                                                                 vertical magenta and green striped images are shown on the
+                                                                                 tablet display. This assigns each tablet pixel a unique temporal
+                                                                                 sequence of colors. We start by calculating a binary mask that
+                                                                                 indicates which pixels in the calibration camera observe the
+                                                                                 tablet display by applying a simple intensity threshold to the
+                                                                                 observed temporal sequence. Similar to Zongker et al. [38],
+                                                                                 we apply an open and then close morphological operator using
+Figure 5. The arrangement of the tablet display and reﬂector along with
+the coordinate system used throughout the paper. The origin of this coor­
+                                                                                 a 10 × 10 box ﬁlter to clean this mask. Let P denote the set of
+dinate system is located in the center of the tablet display with its positive   pixels in the calibration camera that survive this masking step.
+y-axis pointing up along the central axis of the reﬂector and its positive       We then decode the sequence of green and magenta colors
+z-axis pointing toward the viewer.                                               observed at each pixel in P to obtain discrete samples of e.
+As illustrated in Figure 7(a), we simply splat the sparse set
+of samples of e computed above into our reconstructed dis­
+tortion map, f. Speciﬁcally, let Q = {e(p̂) | p̂ ∈ P} be the set
+of tablet pixels for which we observe the mapping function
+e. We may trivially invert these samples to obtain a scattered
+reconstruction of f(q̂) = e−1 (q̂) ∀ q̂ ∈ Q.
+The ﬁnal step in our estimation process is to interpolate and
+smooth the scattered reconstruction of f. To achieve this, we
+                                                                            Figure 8. Left and right viewing rays of a single point on the primary
+convolve the sparse samples using a wide 2D Gaussian kernel.                display surface. Note that these rays are not guaranteed to intersect
+Speciﬁcally, we reconstruct values of f(q̂) at a regular sam­               for curved reﬂectors (closeup looking along x-axis). We use the vertical
+pling resolution of M × N by convolving the set of scattered                parallax, which is equal to the vertical angle between these two rays, to
+samples, Q, with an isotropic 2D Gaussian kernel of size k × k              characterize the performance of different reﬂector shapes.
+with standard deviation σ :
+          ∑q̂∈Q w(p̂, q̂)f(q̂)                                              required to predict the rotation angle from the gyroscope’s raw
+  f(q̂) =                      , w(p̂, q̂) = N (|| p̂ − q̂||22 | σ ). (1)
+           ∑q̂∈Q w(p̂, q̂)                                                  data; 3) the time required to render this new viewpoint; and 4)
+                                                                            the time required to update the tablet’s display. We observed
+Figure 7(b) shows the resulting distortion map and Figure 7(c)              that the desired illusion would fail if the end-to-end lag is
+shows the effect of warping an image according to this map.                 greater than 80ms. This value is consistent with related studies
+                                                                            on minimum tolerable lag in virtual-reality and augmented-
+Ray tracing                                                                 reality displays [7]. Section 6 discusses our speciﬁc prototype
+When an accurate analytical model of the reﬂector shape is                  in more detail and includes an analysis of lag.
+available, another option is to replace the camera-based esti­
+mation process described above with ray tracing plus inter­                 REFLECTOR SHAPE AND BINOCULAR FUSION
+polation. This can be used as an alternative for computing                  An important contribution of this paper is a systematic analysis
+correspondences between viewing rays and pixels on the pri­                 of different reﬂector shapes on the basis of how comfortably a
+mary display. We investigated this approach, but found the                  user can “fuse” the images seen by their left and right eyes. As
+environment matting method above offers a more general strat­               we will show, our analysis indicates an optimal conﬁguration
+egy that can handle non-ideal reﬂector shapes.                              is achieved with a cone. The size of the cone and the angle
+                                                                            it makes with its axis are functions of the size of the primary
+Interactive Rendering                                                       display and viewer position.
+Rendering images for a Pepper’s Cone display is straight­
+forward. We ﬁrst render a standard perspective image that                   Ideally, every displayed point should be observed along a sin­
+we would like to present to the viewer using a conventional                 gle ray from the left and right eye, respectively, that intersect at
+real-time graphics stack, I(p̂), and then warp this image in a              a 3D position located inside the reﬂector. In general for curved
+ﬁnal rendering pass using a fragment shader that applies the                reﬂectors, however, the left and right eyes observe slightly
+distortion map: I(f(Rθ (q̂))), as discussed in Section 3.2.                 different curved virtual images, leading to some amount of
+                                                                            stereo divergence.
+In order to allow the viewer to interactively study the scene
+from any direction, we query the tablet’s gyroscope to deter­               Speciﬁcally, consider a single pixel q̂ on the primary display
+mine its current heading θ and render a view of the 3D scene                and assume the user’s left and right eyes are located at vl =
+from this viewpoint. As with other virtual and augmented real­              (−IPD/2, y0 , z0 ) and vr = (IPD/2, y0 , z0 ), where IPD denotes
+ity displays, maintaining the lowest possible latency between               their interpupiliary distance (Figure 8). The image of q̂ is
+the moment when the user rotates the display and when the                   observed along a ray from each eye, rl (q̂) and rr (q̂), that
+rendered image is updated, called motion-to-photon lag, is                  correspond to the specular reﬂections of q̂. Let us denote the
+critically important to achieve the illusion of smoothly rotat­             points on the reﬂector surface where this specular reﬂection
+ing a 3D object that is suspended inside the reﬂector. There                occurs as xl (q̂) and xr (q̂), respectively.
+are four main sources of latency in the system: 1) the time it              Note that in general rl (q̂) and rr (q̂) are not guaranteed to
+takes before motion is detected by the gyroscope; 2) the time               intersect. We consider the "vertical parallax," which is equal
+                                                                            to the vertical angle between these two rays:
+                                                                                                               rl (q̂)yz · rr (q̂)yz
+                                                                                         vp(q̂) = acos                                     ,
+                                                                                                           ||rl (q̂)yz || · ||rr (q̂)yz ||
+                                                                            where rl and rr are the directions of the two rays from the eyes
+                                                                            with a slight abuse of notation and (·)yz is the component of
+Figure 7. (a) Result of reconstructing the portion of the distortion map,   the vector in the y-z plane.
+f , that can be decoded directly from the calibration sequence shown in
+Figure 6. Note the many holes. (b) We convolve these scattered samples      Prior work has shown that the human visual system can toler­
+with a wide 2D Gaussian kernel to compute a dense hole-free distortion      ate vertical parallax up to 0.5 degrees before they experience
+map. (c) An image warped according to this distortion map.                  difﬁculty fusing the left and right stereo images [26]. We
+                                                                                 (a)                          (b)
+          (a)                      (b)
+                                                                                 (c)                          (d)
+                                                                                 Figure 10. Visualization of the optical surface (green) for an (a) elliptic
+          (c)                      (d)                                           (e = 0.8, p = 7), (c) parabolic (e = 1, p = 7), (d) hyperbolic (e = 1.7, p = 7)
+Figure 9. Example vertical parallax and comfortable viewing region of            and (b) conical (e = 1.7, p = 0) reﬂector. For each shape we show images
+(a) elliptic (e = 0.8, p = 7), (c) parabolic (e = 1, p = 7) and (d) hyperbolic   from the viewer’s perspective (left) and another viewpoint (right).
+(e = 1.7, p = 7) (b) conical (e = 1.7, p = 0) reﬂectors (the rest of the pa­                                            .
+rameters are set as the 27” monitor settings in Sec. 4.1). The black curve
+and white circle enclose the region where vp ≤ 0.5 and its maximum
+inscribed circle, or the comfortable viewing region, respectively. The ma­
+genta curve shows the contour of the reﬂector.
+
+
+denote as stereo-compatible viewing conditions those that
+achieve this level of vertical parallax. In the following sec­
+tions, we consider an important class of reﬂector geometries
+and ﬁnd optimal points in this space that achieve the largest
+stereo-compatible viewing area.
+                                                                                 Figure 11. Visualization of FOV (e, p) (in degree) for (left) a 12.9" iPad
+Reﬂector Shape Optimization                                                      Pro and (right) a 27” 16:9 display. The reﬂectors that maximize the com­
+We consider reﬂector shapes from the family of rotationally-                     fortable viewing region are indicated with small red boxes and detailed
+symmetric conic surfaces [32]. By this, we mean the proﬁle                       in the paper.
+of the reﬂector is a conic section. They can be parametrized
+by eccentricity, e, and focus, p:
+                                                                                 As shown in Figure 11, we observed that FOVmax (p) =
+        S(x, y, z) = x2 + z2 − (e2 − 1)y2 − 2py + p2 = 0.                (2)     maxe FOV (e, p) decreases monotonically as p increases and
+                                                                                 that for each p there is a value of e that maximizes FOV (e, p).
+This corresponds to a cone reﬂector when p = 0, and an elliptic
+(e < 1), parabolic (e = 1) and hyperbolic (e > 1) reﬂector when                  Based on this analysis, we found that values of e = 1.6, p = 0,
+p > 0. We chose this particular class of surfaces because they                   or a 51◦ cone, gives the largest comfortable viewing region
+cover a wide range of rotationally symmetric shapes that can                     with a FOV of 9.6◦ in the case of a 12.9" iPad Pro (R=9.8cm).
+be built rather easily from available materials. They are also                   For a 27" 16:9 display (R=17cm), we found that a reﬂector
+widely used in imaging and astronomical applications [32].                       with e = 1.7, p = 0, or a 54◦ cone, would maximize the com­
+                                                                                 fortable viewing region with a FOV (e, p) = 16.8◦ (Figure 11).
+To make the cone self-supporting, we truncate the base to
+a circle of radius b = 1.25cm. Mathematically, this corre­
+sponds to shifting the reﬂector down along the y-axis so                         Optical Surface
+that the base √is at y = 0 with radius b by using reﬂector                       Although our system is monocularly calibrated, the fact that
+            −p+     e2 (b2 +p2 )−b2
+                                                                                 the images seen by the two eyes are stereo-compatible implies
+S x, y +             e2 −1
+                                    ,z   = 0. Additionally, to simplify          that the viewer perceives the displayed contents as being lo­
+our analysis, we model the primary display as being circular,                    cated on a speciﬁc 3D surface. This surface, which we call
+with a radius of R. We also assume the user is located roughly                   the optical surface is deﬁned by the intersection points of
+                                                                                 corresponding rays from the left and right eyes. Due to the
+an arm’s length away from the display, z0 = 50cm, and use
+                                                                                 presence of small vertical parallax, we compute the closest
+an eye height of y0 = R/2, which centers their view with the
+                                                                                 points of intersection. Figure 10 shows optical surfaces for
+reﬂector. We assume an IPD of 6.35cm.
+                                                                                 four types of quadric surfaces. Note that the optical surface
+For each value of e and p, we compute the vertical parallax                      is generally inside the reﬂector surface (the part of the optical
+over a dense rectangular grid of eye rays. Figure 9 shows                        surface that sticks out of the reﬂector is almost invisible from
+example visualizations of the vertical parallax for one type of                  the viewer’s perspective); hence the object is seen as ﬂoating
+conical, elliptic, parabolic, and hyperbolic reﬂector. Note that                 inside the reﬂector.
+the amount of vertical parallax generally increases towards the
+                                                                                 Note the optical surface is independent of the particular object
+edge of the reﬂector where it has a more grazing orientation
+                                                                                 being visualized. Hence, the binocular depth cues may differ
+from the viewer’s perspective. Also note that each reﬂec­
+                                                                                 from the monocular cues, which depend on the shape of the
+tor gives rise to its own comfortable viewing region, which
+                                                                                 rendered object. In practice, we ﬁnd that this mismatch is
+we deﬁne as the ﬁeld of view of the largest inscribed circle
+with a maximum vertical parallax of 0.5 degrees, denoted by                      rather subtle, with the monocular cues serving to provide ﬁne-
+FOV (e, p).                                                                      scale geometrical details, whereas the binocular cues serve
+                                                                                 to place the object at an absolute position inside the reﬂector.
+We computed the size of this viewing region over a dense set of                  More analysis into the effect of this mismatch is an interesting
+values of e ∈ [0.1, 0.2, 0.3, . . . , 4] and p ∈ [0, 0.5, 1, 1.5, . . . , 20].   topic of future work.
+                                                                           We implemented our rendering application using the Unity
+                                                                           game engine with a custom OpenGL ES fragment shader that
+                                                                           performs ﬁnal distortion rendering pass.
+
+                                                                           Lag
+                                                                           The iPad Pro display uses a variable refresh rate which can
+                                                                           cycle down from its maximum of 60 Hz to 30 Hz when the
+Figure 12. Stereoscopic image of our prototype display showing the Pum­    image is mostly static. This corresponds to a lower bound of
+baa model with binocular correction enabled. Please use red/cyan stereo    33.3ms motion-to-photon lag in the worst case and 8.3ms on
+glasses to view this ﬁgure and the high-resolution ones in the auxiliary   average once the display begins to move. We use the Extended
+material.                                                                  Kalman Filter (EKF) [10] that is implemented in the Google
+                                                                           Cardboard SDK [11] to predict θ from the raw gyroscope data.
+                                                                           In particular, it predicts the rotation angle ahead of time ac­
+BINOCULAR CORRECTION
+                                                                           cording to previous predictions and the most recent gyroscope
+Although the methods above can produce a compelling illu­                  heading. We measured the overall motion-to-photon latency
+sion of a 3D object suspended inside a conical reﬂector, the               of our display using a 240fps video camera and found it to
+perceived shape will not exactly correspond to the input 3D                be roughly 157ms when the display ﬁrst starts to move. This
+model because of the mismatch of monocular and binocular                   number falls to roughly 17ms after the display is moving. This
+cues. However, our display can easily be extended to address               signiﬁcant decrease in latency is due to the increased refresh
+this limitation by use of stereoscopic rendering and glasses.              rate and the beneﬁt of more accurate predictions. In all, we
+We implemented a version of our display that presents correct              found our prototype display was able to achieve the illusion
+binocular images to the viewer, shown in Figure 12. This                   of smooth continuous motion without noticeable lag or drift.
+involved performing the calibration process described in Sec­              Please see the accompany video for results.
+tion 3.2 separately for each left/right eye location, and main­
+taining two distortion maps. Inside the main render loop, an               Applications
+image is generated for each eye using these distortion maps                Shown in Figure 13, we evaluated our prototype using a variety
+and then multiplexed as a classic red/cyan anaglyph. The                   of static and dynamic 3D models. In each row a reference
+viewer observes correct binocular cues with matching red/cyan              image is shown next to an image of our display at the same
+stereo glasses.                                                            viewpoint for comparison. The remaining three images in each
+                                                                           row show our display at other viewpoints.
+RESULTS                                                                    The top four rows are static objects. The car and the cartoon
+Our prototype display is shown in Figure 1(a). It consists                 house are synthetic 3D models. Note the specular highlights
+of an iPad Pro tablet computer and a thin hollow truncated                 on the surface of the shiny car. These types of view-dependent
+cone. The iPad has a 2732 × 2048 resolution LED-backlit                    effects are difﬁcult to reproduce with typical volumetric dis­
+LCD display that is 12.9 inches along its diagonal. The cone               plays (Section 2). The woolly mammoth skeleton and the kylix
+is constructed from a single PETG plastic sheet that is 0.5mm              (ancient Greek cup) in the third and fourth rows are 3D scans
+thick. The height of the cone is 141.4mm and it makes an                   of archaeological artifacts [34]. The tiger, beating heart and
+angle of 45 degrees with its central axis (close to the optimal            turtle are all animated models. Some of these include audio
+51◦ but easier to construct).                                              which we found added to the realism of the experience. We
+                                                                           also experimented with showing captured 3D content on our
+The diameter of the opening that rests on the tablet is 16mm.              display. The rings in the 8th row were captured by photograph­
+We taped a US nickel to the bottom of the cone to help maintain            ing a real object as it was rotated on a turntable. This result
+its balance and increase friction. For the rotatable base we               suggests a simple end-to-end capture and display pipeline for
+used a simple “lazy susan” designed for decorating cakes that
+                                                                           physical objects enabled by this work.
+we bought online. Excluding the tablet computer, the total cost
+of this setup is $27 and required only 5 minutes to assemble               Our prototype display is able to reproduce the overall ap­
+from pre-cut pieces.                                                       pearance of the input model quite well without any obvious
+                                                                           geometric distortions. There are some noticeable color differ­
+Our prototype display is calibrated with viewing location at               ences that result from both the color shift of the capture camera
+y=8cm and z=43cm (Figure 5). The resolution of our iPhone                  and light interference. We believe this could be reduced by
+6S calibration camera is M × N = 1920 × 1080. We used val­
+                                                                           picking better material and thickness or performing a speciﬁc
+ues of σ = 7 and k = 43 for the scattered data interpolation
+                                                                           radiometric calibration. The high resolution of our display al­
+step (Equation 1). Before interpolation, the set of sparse sam­
+                                                                           lows viewing small details such as the individual blood vessels
+ples Q includes only 0.83% of the pixels on the tablet and we
+                                                                           in the heart model. These results also demonstrate possible
+manage to reconstruct a smooth mapping f that covers 68.13%                applications of our display in product exhibition, decoration,
+of the pixels. We use a total of 24 calibration images for the             archaeology and cultural heritage preservation, medicine, edu­
+green-and-magenta binary code sequence. The total distortion               cation, virtual assistants, games and animation.
+map construction and processing time required 42s on a Mac-
+book Pro with a 2.7 GHz Intel Core i5 CPU and 8 GB of main                 While the best illusion is obtained with custom shaped reﬂec­
+memory.                                                                    tors, we’ve also achieved compelling results with a range of
+         Reference                      Display                                               Other Viewpoints
+
+
+
+
+Figure 13. Some static and dynamic models that we used to evaluate our display and illustrate different application domains. Left to right: Reference
+image; image of our Pepper’s Cone display at same viewpoint for comparison; our display at three other viewpoints. Top to bottom: car, cartoon house,
+woolly mammoth skeleton, kylix, animated tiger, beating heart with sound, talking cartoon avatar with sound, rings. Please see the accompanying video
+for dynamic versions of these results.
+                                                                        Multiple participants remarked that our system achieves a high-
+                                                                        level of realism with such a simple setup and without glasses.
+                                                                        For example, “It’s a very easy way to get the illusion of having
+                                                                        a real object in front of you - deﬁnitely more convincing than
+                                                                        3D glasses with a display. The rotation adds a lot.” All but
+                                                                        one user preferred the monocular system due to its comfort
+                                                                        (no glasses), convenience, and the fact that it avoids the color
+                                                                        artifacts caused by anaglyph stereo glasses, while achieving
+                                                                        a comparable 3D effect. Note that using polarizing or shutter
+                                                                        glasses could mitigate the color artifacts.
+                                                                        When asked if they would prefer having either of these systems
+                                                                        in their home, nine answered yes to the monocular system.
+                                                                        Three answered maybe, but wanted to see more evidence of
+Figure 14. A Pepper’s Cone display built from an ordinary plastic cup   practical uses and applications.
+with its base removed.
+                                                                        In terms of limitations, several participants reported dislik­
+                                                                        ing the color artifacts of the binocular system caused by the
+                                                                        anaglyph glasses. A couple of participants remarked that
+everyday objects like cups, vases, and other household items.           the connecting seam of the cone is distracting and one user
+Here we show a Pepper’s Cone built from an ordinary plastic             suggested adding some type of interaction. Finally, ﬁve par­
+cup with its base removed.                                              ticipants complained that the system works properly at only a
+                                                                        single calibrated head position and encouraged us to lift that
+                                                                        requirement.
+PRELIMINARY USER FEEDBACK
+We collected feedback for both our glasses-free system                  CONCLUSION AND FUTURE WORK
+(monocular system) and the system with binocular correc­                We introduced Pepper’s Cone, a simple inexpensive do-it­
+tion (binocular system) from 12 users: 7 male, 5 female, 23-40          yourself display that provides a fun and compelling way to
+years old. Four out of twelve were doing research in AR/VR.             view a 3D scene. Inspired by the classic Pepper’s Ghost illu­
+                                                                        sion, our setup consists of a thin hollow plastic cone placed
+The primary goal of this study was to evaluate the quality of
+                                                                        directly on top of a tablet computer display. We pre-warp
+the illusion, namely that 1) the object appears to be ﬂoating
+                                                                        images on the tablet based on its gyroscope heading so that
+in the center of the cone, and 2) that the object appears three-        when viewed from the side, the rendered 3D scene appears to
+dimensional. Users were ﬁrst asked to rate how believable               be suspended inside the cone. The illusion is quite convincing,
+the illusion of a real object ﬂoating inside the cone is for both       as illustrated by the results presented in the paper and accom­
+monocular and binocular systems, on a scale of 1: poor / looks          panying video. Compared to existing 3d displays, our setup is
+fake, 2: unsure, 3: fair, 4: good, 5: excellent / looks like a          far simpler and less expensive and does not require the use of
+real physical object. Both monocular and binocular systems              special glasses.
+had a median rating of 4, and means of 4.17 (monocular) and
+4.0 (binocular). In other words, the monocular system does              Our design is based on a thorough analysis of reﬂector geome­
+a surprisingly good job of producing the illusion of depth,             tries, to determine the optimal shape for a given 2D display.
+matching or even slightly outperforming the binocular system.           We also present the ﬁrst analysis of stereo-compatibility for
+                                                                        Pepper’s Ghost displays and ﬁnd reﬂector shapes that enable
+All participants reported that the displayed object appears to be       comfortable stereo viewing with an apparent depth behind the
+inside the cone. And even after comparing with the binocular            reﬂector, providing the illusion that the object is ﬂoating inside
+system, eight out of twelve reported that the rotation axis of the
+                                                                        the reﬂector. When stereo glasses are available, we present
+displayed object is well centered and several commented that
+                                                                        a binocular correction technique that brings the monocular
+they could not distinguish between monocular and binocular.
+                                                                        and binocular cues into agreement. However, our preliminary
+Only four participants reported noticing a slight misalignment          user feedback shows that the monocular system can achieve
+in the monocular system–recall that the optical surface leans           similar compelling 3D illusion while being more comfortable
+towards the front surface of the cone.                                  and convenient.
+Users were also asked to rate how compelling the illusion
+                                                                        Our display is not suitable for bright outdoor environments. As
+of the displayed object being three-dimensional is for both
+                                                                        shown in Figure 15, we studied the performance of our setup in
+systems on a scale of 1: poor, 2: unsure, 3: fair, 4: good,
+                                                                        different lighting conditions. As with other augmented-reality
+5: excellent. Both the monocular and binocular systems had
+                                                                        displays, environments with less ambient lighting and uniform
+a median rating of 4, and means of 3.92 (monocular) and
+                                                                        dark areas directly behind the display provide the best viewing
+4.17 (binocular). Interestingly, the binocular system, which            conditions. However, we found that the iPad Pro was bright
+produces correct stereo images was only marginally better,              enough to work in typical ofﬁce environments quite well.
+demonstrating the effectiveness of the monocular system. We
+attribute this to the strong visibility cues achieved with the          Another limitation of our display is that it assumes a spe­
+semi-transparent reﬂector.                                              ciﬁc viewing position. However, small displacements from
+                                                                             ACKNOWLEDGEMENTS
+                                                                             This work was supported by funding from the National Sci­
+                                                                             ence Foundation grant IIS-1538618, Intel, Google, and the
+                                                                             UW Animation Research Labs. We also wish to thank Dan
+                                                                             Goldman for early input and all the participants of our user
+                                                                             study for their time and participation.
+                 (a)                                (b)                      REFERENCES
+                                                                              1. Arena3D. 2015. Arena3D Industrial Illusion.
+                                                                                 http://arena3d.com/. (2015).
+                                                                              2. Tibor Balogh, Péter Tamás Kovács, and Zoltán Megyesi.
+                                                                                 2007. Holovizio 3D display system. In Proceedings of the
+                                                                                 First International Conference on Immersive
+                                                                                 Telecommunications. ICST (Institute for Computer
+                 (c)                                (d)                          Sciences, Social-Informatics and Telecommunications
+Figure 15. We studied the performance of our prototype Pepper’s Cone             Engineering), 19.
+display in different lighting environments. As expected, this type of dis­
+play performs best in (a,b) dark environments, although it is still usable    3. Peter C. Barnum, Srinivasa G. Narasimhan, and Takeo
+in (c) moderately bright spaces like inside a building or in an ofﬁce en­        Kanade. 2010. A Multi-layered Display with Water
+vironment. The performance degrades signiﬁcantly in (d) very bright              Drops. ACM Transactions on Graphics 29, 4 (2010),
+environments with direct sunlight.                                               76:1–76:7.
+                                                                              4. Oliver Bimber, Bernd Fröhlich, Dieter Schmalstieg, and
+                                                                                 L Miguel Encarnação. 2006. The virtual showcase. In
+                                                                                 ACM SIGGRAPH 2006 Courses. ACM, 9.
+                                                                              5. P-A Blanche, A Bablumian, R Voorakaranam, C
+                                                                                 Christenson, W Lin, T Gu, D Flores, P Wang, W-Y Hsieh,
+                                                                                 M Kathaperumal, and others. 2010. Holographic
+                                                                                 three-dimensional telepresence using large-area
+                                                                                 photorefractive polymer. Nature 468, 7320 (2010),
+                                                                                 80–83.
+                                                                              6. Jeremy Brooker. 2007. The Polytechnic Ghost. Early
+                                                                                 Popular Visual Culture 5, 2 (2007), 189–206.
+                                                                              7. Grigore Burdea and Philippe Coiffet. 2003. Virtual reality
+                                                                                 technology. Presence: Teleoperators and virtual
+                                                                                 environments 12, 6 (2003), 663–664.
+                                                                              8. Dimensional Studioson going. Dimensional Studios.
+           0◦                      5◦                       10◦                  http://www.eyeliner3d.com/. (on going).
+Figure 16. Demonstration of the distortion in our display at non-ideal
+viewing locations. All images were captured at the calibration position of    9. Neil A. Dodgson. 2005. Autostereoscopic 3D Displays.
+y = 8cm and z = 50cm, but with 0, 5 and 10 degree angular displacements          Computer 38, 8 (2005), 31–36.
+along the x-axis. The object appears to tilt when viewed off-axis.
+                                                                             10. Garry A Einicke and Langford B White. 1999. Robust
+                                                                                 extended Kalman ﬁltering. IEEE Transactions on Signal
+                                                                                 Processing 47, 9 (1999), 2596–2599.
+this calibrated position do not rapidly degrade the experience.              11. Googleon going. Google Cardboard SDK for Unity.
+Speciﬁcally, the displayed image appears to tilt when the view­                  https://developers.google.com/cardboard/unity/. (on
+ing position is offset along the x-axis by more than 5 degrees                   going).
+(Figure 16). Displacements along the y- and z-axes are far
+less noticeable. The supplemental video demonstrates these                   12. Hologram USAon going. Hologram USA.
+distortions as well. We found that users are able to ﬁnd an                      http://www.hologramusa.com/. (on going).
+acceptable viewing position with no guidance. One avenue                     13. Holus. 2015. Holus. http://hplustech.com/. (2015).
+of future work is to add camera-based head-tracking to auto­
+matically account for the actual viewing position. This would                14. Michael Huebschman, Bala Munjuluri, and Harold
+allow the user to freely walk around our display, which would                    Garner. 2003. Dynamic holographic 3-D image
+be better in certain applications like a virtual greeter at the                  projection. Optics Express 11, 5 (2003), 437–445.
+entrance of a building. Finally, we would like to extend our                 15. Haruo Isono, Minoru Yasuda, and Hideaki Sasazawa.
+system to accommodate more than one viewer at a time. Our                        1993. Autostereoscopic 3-D display using LCD-generated
+rotational symmetric reﬂector geometry is particularly well                      parallax barrier. Electronics and Communications in
+suited for this purpose.                                                         Japan (Part II: Electronics) 76, 7 (1993), 77–84.
+16. Andrew Jones, Ian McDowall, Hideshi Yamada, Mark                Swept-Volume Video Display. Journal of Display
+    Bolas, and Paul Debevec. 2007. An Interactive 360&Deg;          Technology 8, 5 (2012), 256–268.
+    Light Field Display. In ACM SIGGRAPH 2007 Emerging
+                                                                29. Maurice Stanley, Patrick B Conway, Stuart D Coomber,
+    Technologies.
+                                                                    John C Jones, Dave C Scattergood, Christopher W
+17. Andrew Jones, Jonas Unger, Koki Nagano, Jay Busch,              Slinger, Robert W Bannister, Carl V Brown, William A
+    Xueming Yu, Hsuan-Yueh Peng, Oleg Alexander, and                Crossland, and Adrian RL Travis. 2000. Novel
+    Paul Debevec. 2014. Creating a Life-sized                       electro-optic modulator system for the production of
+    Automultiscopic Morgan Spurlock for CNNs "Inside                dynamic images from giga-pixel computer-generated
+    Man". In ACM SIGGRAPH 2014 Talks.                               holograms. In Electronic Imaging. International Society
+                                                                    for Optics and Photonics, 13–22.
+18. Yoshihiro Kajiki, Hiroshi Yoshikawa, and Toshio Honda.
+    1996. 3D display with focused light array. Proceedings of   30. Chihiro Suga and Itiro Siio. 2011. Anamorphicons: An
+    SPIE 2652 (1996), 106–116.                                      extended display with a cylindrical mirror. In
+                                                                    Proceedings of the ACM International Conference on
+19. Douglas Lanman, Gordon Wetzstein, Matthew Hirsch,               Interactive Tabletops and Surfaces. ACM, 242–243.
+    Wolfgang Heidrich, and Ramesh Raskar. 2011.
+    Polarization Fields: Dynamic Light Field Display Using      31. Ivan E. Sutherland. 1968. A Head-mounted Three
+    Multi-layer LCDs. ACM Transactions on Graphics 30, 6            Dimensional Display. In Proceedings of the December
+    (2011), 186:1–186:10.                                           9-11, 1968, Fall Joint Computer Conference, Part I
+                                                                    (AFIPS ’68 (Fall, part I)). ACM, New York, NY, USA,
+20. Andrew Lippman. 1980. Movie-maps: An application of             757–764. DOI:
+    the optical videodisc to computer graphics. In Acm              http://dx.doi.org/10.1145/1476589.1476686
+    Siggraph Computer Graphics, Vol. 14. ACM, 32–42.
+                                                                32. Rahul Swaminathan, Michael D Grossberg, and Shree K
+21. Keiichi Maeno, Naoki Fukaya, Osamu Nishikawa, Koki
+                                                                    Nayar. 2006. Non-single viewpoint catadioptric cameras:
+    Sato, and Toshio Honda. 1996. Electro-holographic
+                                                                    Geometry and analysis. International Journal of
+    display using 15mega pixels LCD. Proceedings of SPIE
+                                                                    Computer Vision 66, 3 (2006), 211–229.
+    2652 (1996), 15–23.
+                                                                33. Savaş Tay, P-A Blanche, R Voorakaranam, AV Tunc, W
+22. Wojciech Matusik and Hanspeter Pﬁster. 2004. 3D TV: A
+                                                                    Lin, S Rokutanda, T Gu, D Flores, P Wang, G Li, and
+    Scalable System for Real-time Acquisition, Transmission,
+                                                                    others. 2008. An updatable holographic
+    and Autostereoscopic Display of Dynamic Scenes. ACM
+                                                                    three-dimensional display. Nature 451, 7179 (2008),
+    Transactions on Graphics 23, 3 (2004), 814–824.
+                                                                    694–698.
+23. Musion Das Hologram Ltd. since 1996. Musion.
+                                                                34. The Smithsonian Institute2014. Smithsonian X 3D.
+    http://musion.com/. (since 1996).
+                                                                    http://3d.si.edu/. (2014).
+24. Susumu Nakajima, Kozo Nakamura, Ken Masamune,
+                                                                35. G. Wetzstein, D. Lanman, W. Heidrich, and R. Raskar.
+    Ichiro Sakuma, and Takeyoshi Dohi. 2001.
+                                                                    2011. Layered 3D: Tomographic Image Synthesis for
+    Three-dimensional medical imaging display with
+                                                                    Attenuation-based Light Field and High Dynamic Range
+    computer-generated integral photography. Computerized
+                                                                    Displays. ACM Trans. Graph. 30, 4 (2011).
+    Medical Imaging and Graphics 25, 3 (2001), 235–241.
+25. S. K. Nayar and V. N. Anand. 2007. 3D Display Using         36. Gordon Wetzstein, Douglas Lanman, Matthew Hirsch,
+    Passive Optical Scatterers. Computer 40, 7 (2007),              and Ramesh Raskar. 2012. Tensor Displays: Compressive
+    54–63.                                                          Light Field Synthesis Using Multilayer Displays with
+                                                                    Directional Backlighting. ACM Transactions on Graphics
+26. Damin Qin, Mamoru Takamatsu, and Yoshio Nakashima.              31, 4 (2012), 80:1–80:11.
+    2004. Measurement for the Panum’s fusional area in
+    retinal fovea using a three-dimension display device.       37. Xinxing Xia, Xu Liu, Haifeng Li, Zhenrong Zheng, Han
+    Journal of Light & Visual Environment 28, 3 (2004),             Wang, Yifan Peng, and Weidong Shen. 2013. A
+    126–131.                                                        360-degree ﬂoating 3D display based on light ﬁeld
+                                                                    regeneration. Optics Express 21, 9 (2013), 11237–11247.
+27. Eric G Rawson. 1969. Vibrating varifocal mirrors for 3-D
+    imaging. IEEE Spectrum 6, 9 (1969), 37–43.                  38. Douglas E Zongker, Dawn M Werner, Brian Curless, and
+                                                                    David H Salesin. 1999. Environment matting and
+28. L. Sawalha, M. P. Tull, M. B. Gately, J. J. Sluss, M.           compositing. In Proceedings of ACM SIGGRAPH.
+    Yeary, and R. D. Barnes. 2012. A Large 3D                       205–214.

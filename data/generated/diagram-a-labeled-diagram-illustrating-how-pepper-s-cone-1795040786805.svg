@@ -1,0 +1,125 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- Gradient for Cone -->
+    <linearGradient id="coneGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#3a4b58;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#26333e;stop-opacity:1" />
+    </linearGradient>
+    
+    <!-- Gradient for Tablet -->
+    <linearGradient id="tabletGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#eaf7ff;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#cde6f0;stop-opacity:1" />
+    </linearGradient>
+
+    <!-- Arrow Marker -->
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+      <polygon points="0 0, 10 3, 0 6" fill="#7ff5d8" />
+    </marker>
+    
+    <!-- Arrow Marker for Light -->
+    <marker id="arrowLight" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+      <polygon points="0 0, 10 3, 0 6" fill="#ffc86a" />
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1024" height="1024" fill="#0b1013" rx="20" ry="20"/>
+
+  <!-- Title Section -->
+  <text x="512" y="60" font-family="Arial, sans-serif" font-size="28" fill="#eaf7ff" text-anchor="middle" font-weight="bold">Pepper's Cone Working Principle</text>
+  <text x="512" y="95" font-family="Arial, sans-serif" font-size="16" fill="#a0b3bc" text-anchor="middle">Technical Diagram: Reflection &amp; Perspective Correction</text>
+
+  <!-- Main Composition Container -->
+  <g transform="translate(180, 120)">
+    
+    <!-- Left Side: The Cone Assembly (Front View) -->
+    <g transform="translate(0, 0)">
+      <!-- Plastic Cone -->
+      <path d="M -50,-40 L 50,-40 L 50,80 L -50,80 Z" fill="url(#coneGrad)" stroke="#7ff5d8" stroke-width="2" stroke-dasharray="10,5"/>
+      <!-- Inner Cone Highlight -->
+      <path d="M -30,-30 L 30,-30 L 30,60 L -30,60 Z" fill="#1a2733" opacity="0.8"/>
+      
+      <!-- Tablet at Apex -->
+      <rect x="-45" y="-45" width="90" height="50" rx="5" fill="#0b1013" stroke="#eaf7ff" stroke-width="2"/>
+      <!-- Screen Content (Cube) -->
+      <path d="M -35,-30 L 35,-30 L 40,10 L -40,10 Z" fill="url(#tabletGrad)" stroke="#9bd6e8" stroke-width="1"/>
+      <!-- Cube Lines on Screen -->
+      <line x1="-35" y1="-30" x2="40" y2="10" stroke="#9bd6e8" stroke-width="1"/>
+      <line x1="40" y1="10" x2="40" y2="-30" stroke="#9bd6e8" stroke-width="1"/>
+      <line x1="-35" y1="-30" x2="-40" y2="10" stroke="#9bd6e8" stroke-width="1"/>
+      
+      <!-- Labels -->
+      <text x="0" y="-60" font-family="Arial, sans-serif" font-size="14" fill="#ffc86a" text-anchor="middle">Pre-distorted image</text>
+      <text x="0" y="-75" font-family="Arial, sans-serif" font-size="14" fill="#ffc86a" text-anchor="middle">on tablet</text>
+      
+      <!-- Light Rays -->
+      <!-- Left Eye Ray -->
+      <line x1="35" y1="-20" x2="120" y2="20" stroke="#7ff5d8" stroke-width="2" marker-end="url(#arrowLight)"/>
+      <!-- Right Eye Ray (Stereo) -->
+      <line x1="35" y1="-20" x2="120" y2="-40" stroke="#7ff5d8" stroke-width="2" marker-end="url(#arrowLight)"/>
+
+      <!-- Viewer's Eye -->
+      <circle cx="120" cy="0" r="15" fill="#eaf7ff" opacity="0.9"/>
+      <circle cx="120" cy="0" r="6" fill="#0b1013"/>
+      <text x="140" y="-10" font-family="Arial, sans-serif" font-size="14" fill="#eaf7ff">Viewer's eye</text>
+
+      <!-- Cone Label -->
+      <rect x="-65" y="90" width="130" height="25" rx="5" fill="#3a4b58" stroke="#7ff5d8" opacity="0.5"/>
+      <text x="-15" y="110" font-family="Arial, sans-serif" font-size="14" fill="#eaf7ff" text-anchor="middle">Plastic cone reflector</text>
+      <text x="-15" y="125" font-family="Arial, sans-serif" font-size="14" fill="#eaf7ff" text-anchor="middle">(51° angle)</text>
+
+      <!-- Resulting Image Label -->
+      <rect x="-65" y="130" width="130" height="25" rx="5" fill="#3a4b58" stroke="#7ff5d8" opacity="0.5"/>
+      <text x="-15" y="150" font-family="Arial, sans-serif" font-size="14" fill="#eaf7ff" text-anchor="middle">Reflected 3D image</text>
+      <text x="-15" y="165" font-family="Arial, sans-serif" font-size="14" fill="#eaf7ff" text-anchor="middle">appears inside cone</text>
+
+      <!-- Perspective Correction Note -->
+      <rect x="-65" y="180" width="130" height="25" rx="5" fill="#3a4b58" stroke="#7ff5d8" opacity="0.5"/>
+      <text x="-15" y="200" font-family="Arial, sans-serif" font-size="14" fill="#eaf7ff" text-anchor="middle">Perspective correction</text>
+      <text x="-15" y="215" font-family="Arial, sans-serif" font-size="14" fill="#eaf7ff" text-anchor="middle">based on viewing angle</text>
+
+    </g>
+
+    <!-- Right Side: Side View / Rotation Explanation -->
+    <g transform="translate(300, 0)">
+      <!-- Side View Cone Outline (Simplified) -->
+      <path d="M -50,-40 L 50,-40 L 50,80 L -50,80 Z" fill="none" stroke="#5a6b78" stroke-width="2" stroke-dasharray="5,5"/>
+      
+      <!-- Tablet Rotation Indicator -->
+      <rect x="-45" y="-45" width="90" height="50" rx="5" fill="#1a2733" stroke="#ffc86a" stroke-width="2"/>
+      <path d="M -35,-30 L 35,-30 L 40,10 L -40,10 Z" fill="#eaf7ff" opacity="0.9"/>
+      
+      <!-- Arc indicating rotation -->
+      <path d="M -20,-60 A 20 20 0 0 1 20,-60" fill="none" stroke="#ffc86a" stroke-width="3" marker-end="url(#arrow)"/>
+
+      <!-- Labels for Side View -->
+      <text x="-40" y="-90" font-family="Arial, sans-serif" font-size="14" fill="#eaf7ff" text-anchor="middle">Tablet</text>
+      <text x="-40" y="-85" font-family="Arial, sans-serif" font-size="12" fill="#a0b3bc" text-anchor="middle">Rotation</text>
+
+      <!-- Legend Box -->
+      <rect x="-65" y="90" width="130" height="70" rx="5" fill="#3a4b58" stroke="#7ff5d8" opacity="0.5"/>
+      <text x="-15" y="110" font-family="Arial, sans-serif" font-size="12" fill="#eaf7ff" text-anchor="middle">Legend:</text>
+      
+      <!-- Legend Item 1 -->
+      <line x1="-60" y1="130" x2="-45" y2="130" stroke="#7ff5d8" stroke-width="2"/>
+      <circle cx="-45" cy="130" r="3" fill="#7ff5d8"/>
+      <text x="-35" y="135" font-family="Arial, sans-serif" font-size="12" fill="#eaf7ff">Light Ray</text>
+
+      <!-- Legend Item 2 -->
+      <line x1="-60" y1="150" x2="-45" y2="150" stroke="#ffc86a" stroke-width="2"/>
+      <circle cx="-45" cy="150" r="3" fill="#ffc86a"/>
+      <text x="-35" y="155" font-family="Arial, sans-serif" font-size="12" fill="#eaf7ff">Stereo Pair</text>
+
+      <!-- Legend Item 3 -->
+      <rect x="-60" y="170" width="15" height="10" rx="2" fill="#eaf7ff"/>
+      <text x="-45" y="180" font-family="Arial, sans-serif" font-size="12" fill="#eaf7ff">Tablet Screen</text>
+
+    </g>
+
+  </g>
+  
+  <!-- Footer / Credits -->
+  <text x="512" y="960" font-family="Arial, sans-serif" font-size="14" fill="#5a6b78" text-anchor="middle">End of Diagram</text>
+
+</svg>
