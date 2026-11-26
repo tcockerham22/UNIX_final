@@ -1,0 +1,21 @@
+html,
+body {
+  background: transparent !important;
+}
+
+.holo {
+  background: transparent;
+}
+
+.hud {
+  bottom: 3%;
+}
+
+.meta,
+.tiers {
+  display: none;
+}
+
+.detail {
+  font-size: 13px;
+}

@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ada Orb</title>
+  <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="/cloud-orb.css">
+</head>
+<body data-state="idle" data-cloud-orb-only="true">
+  <main class="holo" aria-label="Ada holographic display">
+    <canvas id="orb" aria-hidden="true"></canvas>
+    <div class="hud">
+      <div id="state-label" class="state">IDLE</div>
+      <div id="state-detail" class="detail">ready when you are</div>
+      <div class="meta">
+        <span id="route-text">route —</span>
+        <span class="sep">•</span>
+        <span id="model-text">—</span>
+        <span class="sep">•</span>
+        <span id="link-text" class="online">cloud</span>
+      </div>
+      <div class="tiers" id="tiers-text">Ada cloud assistant</div>
+    </div>
+  </main>
+  <script src="/app.js"></script>
+</body>
+</html>
