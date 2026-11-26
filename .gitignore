@@ -12,8 +12,18 @@ __pycache__/
 *.key
 
 data/memories.json
-
 assets/voices/*.onnx
 assets/voices/*.onnx.json
-
 .DS_Store
+# --- Secrets: never commit these ---
+*.env
+.terraform/
+.terraform.lock.hcl.bak
+*credentials*.json
+service-account*.json
+# --- Python ---
+*.pyc
+# --- Editors / OS ---
+*.swp
+.vscode/
+.idea/
