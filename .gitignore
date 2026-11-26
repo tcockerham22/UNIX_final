@@ -1,6 +1,15 @@
 .venv/
 __pycache__/
 *.py[cod]
+.env
+.env.*
+!.env.example
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfvars.json
+*.pem
+*.key
 
 data/memories.json
 

@@ -60,5 +60,12 @@
     "read_file",
     "write_file",
     "run_command"
-  ]
+  ],
+  "image_backend": "auto",
+  "image_api_url": "http://127.0.0.1:7860",
+  "image_dir": "data/generated",
+  "image_model": "qwen3.5:9b",
+  "image_size": 1024,
+  "image_max_tokens": 4096,
+  "image_svg_fallback": true
 }
