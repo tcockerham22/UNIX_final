@@ -1,0 +1,52 @@
+global
+    log stdout format raw local0
+    maxconn 4096
+
+defaults
+    mode http
+    log global
+    option httplog
+    option http-keep-alive
+    timeout connect 5s
+    timeout client 15m
+    timeout server 15m
+    timeout tunnel 1h
+    timeout http-request 30s
+
+frontend public_http
+    bind :80
+    stick-table type ip size 100k expire 10s store http_req_rate(10s)
+    acl ai_request path_beg /api/chat /api/rag/chat
+    http-request track-sc0 src if ai_request
+    http-request deny deny_status 429 if ai_request { sc_http_req_rate(0) gt ${ADA_AI_RATE_LIMIT} }
+    default_backend web_pool
+
+backend web_pool
+    balance leastconn
+    option httpchk GET /healthz
+    http-check expect status 200
+    server-template web 6 ada-web:8765 check inter 3s fall 2 rise 2 resolvers docker init-addr libc,none
+
+resolvers docker
+    nameserver docker 127.0.0.11:53
+    resolve_retries 3
+    timeout resolve 1s
+    timeout retry 1s
+    hold valid 10s
+
+frontend internal_ollama
+    bind :8400
+    default_backend ollama_pool
+
+backend ollama_pool
+    balance leastconn
+    option httpchk GET /ready
+    http-check expect status 200
+    server ollama_a ${ADA_AI_PRIVATE_IP}:11434 check inter 5s fall 2 rise 2
+    server ollama_b ${ADA_AI_PRIVATE_IP}:11435 check inter 5s fall 2 rise 2
+
+listen stats
+    bind :8401
+    stats enable
+    stats uri /stats
+    stats refresh 10s

@@ -1,0 +1,100 @@
+name: ada-ai
+
+services:
+  ollama-a:
+    image: ollama/ollama:0.13.5
+    environment:
+      OLLAMA_HOST: 0.0.0.0:11434
+      OLLAMA_MODELS: /models
+      OLLAMA_NUM_PARALLEL: "1"
+      OLLAMA_KEEP_ALIVE: "-1"
+    volumes:
+      - ${ADA_MODELS_PATH:-/models}:/models:ro
+    networks:
+      - ai-internal
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "2.00"
+          memory: 5G
+
+  ollama-b:
+    image: ollama/ollama:0.13.5
+    environment:
+      OLLAMA_HOST: 0.0.0.0:11434
+      OLLAMA_MODELS: /models
+      OLLAMA_NUM_PARALLEL: "1"
+      OLLAMA_KEEP_ALIVE: "-1"
+    volumes:
+      - ${ADA_MODELS_PATH:-/models}:/models:ro
+    networks:
+      - ai-internal
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "2.00"
+          memory: 5G
+
+  ready-shim-a:
+    build:
+      context: ..
+      dockerfile: deploy/ready-shim.Dockerfile
+    environment:
+      OLLAMA_UPSTREAM: http://ollama-a:11434
+      ADA_CLOUD_MODEL: ${ADA_CLOUD_MODEL:-qwen3.5:4b}
+    depends_on:
+      - ollama-a
+    ports:
+      - "${ADA_AI_BIND_IP:?Set ADA_AI_BIND_IP}:11434:8080"
+    networks:
+      - ai-internal
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/ready', timeout=2)"
+      interval: 10s
+      timeout: 3s
+      retries: 6
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 128M
+
+  ready-shim-b:
+    build:
+      context: ..
+      dockerfile: deploy/ready-shim.Dockerfile
+    environment:
+      OLLAMA_UPSTREAM: http://ollama-b:11434
+      ADA_CLOUD_MODEL: ${ADA_CLOUD_MODEL:-qwen3.5:4b}
+    depends_on:
+      - ollama-b
+    ports:
+      - "${ADA_AI_BIND_IP:?Set ADA_AI_BIND_IP}:11435:8080"
+    networks:
+      - ai-internal
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/ready', timeout=2)"
+      interval: 10s
+      timeout: 3s
+      retries: 6
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 128M
+
+networks:
+  ai-internal:
+    driver: bridge

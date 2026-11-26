@@ -1,0 +1,212 @@
+name: ada-edge
+
+services:
+  haproxy:
+    build:
+      context: ..
+      dockerfile: deploy/haproxy/Dockerfile
+    environment:
+      ADA_AI_PRIVATE_IP: ${ADA_AI_PRIVATE_IP:?Set ADA_AI_PRIVATE_IP}
+      ADA_AI_RATE_LIMIT: ${ADA_AI_RATE_LIMIT:-30}
+    ports:
+      - "${ADA_EDGE_BIND_IP:-0.0.0.0}:80:80"
+      - "127.0.0.1:8401:8401"
+    networks:
+      - app
+      - monitoring
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 256M
+
+  ada-web:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    environment:
+      ADA_PROFILE: cloud
+      ADA_DATABASE_URL: ${ADA_DATABASE_URL:?Set ADA_DATABASE_URL}
+      ADA_OLLAMA_HOST: http://haproxy:8400
+      ADA_CLOUD_MODEL: ${ADA_CLOUD_MODEL:-qwen3.5:4b}
+      ADA_WEB_HOST: 0.0.0.0
+      ADA_WEB_PORT: "8765"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      haproxy:
+        condition: service_started
+    networks:
+      - app
+      - database
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "1.00"
+          memory: 768M
+
+  postgres:
+    image: pgvector/pgvector:0.8.1-pg17
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-ada}
+      POSTGRES_USER: ${POSTGRES_USER:-ada}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+    volumes:
+      - ${ADA_DB_DATA:-/data/db}:/var/lib/postgresql/data
+    networks:
+      - database
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "1.00"
+          memory: 2G
+
+  ingest:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        until python -m ingest.ingest --if-empty; do
+          echo "Corpus ingestion is waiting for PostgreSQL and Ollama."
+          sleep 15
+        done
+        exec sleep infinity
+    environment:
+      ADA_PROFILE: cloud
+      ADA_DATABASE_URL: ${ADA_DATABASE_URL:?Set ADA_DATABASE_URL}
+      ADA_OLLAMA_HOST: http://haproxy:8400
+      ADA_CLOUD_MODEL: ${ADA_CLOUD_MODEL:-qwen3.5:4b}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      haproxy:
+        condition: service_started
+    networks:
+      - app
+      - database
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "1.00"
+          memory: 1G
+
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=7d
+      - --web.enable-lifecycle
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "127.0.0.1:9090:9090"
+    networks:
+      - monitoring
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 512M
+
+  grafana:
+    image: grafana/grafana:12.1.1
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?Set GRAFANA_ADMIN_PASSWORD}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+    ports:
+      - "127.0.0.1:3000:3000"
+    networks:
+      - monitoring
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 512M
+
+  node-exporter:
+    image: prom/node-exporter:v1.9.1
+    command:
+      - --path.procfs=/host/proc
+      - --path.sysfs=/host/sys
+      - --path.rootfs=/host/root
+      - --collector.filesystem.mount-points-exclude=^/(dev|proc|sys|var/lib/docker/.+|var/lib/containers/.+)($|/)
+    pid: host
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/host/root:ro,rslave
+    networks:
+      - monitoring
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "0.20"
+          memory: 128M
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.52.1
+    privileged: true
+    devices:
+      - /dev/kmsg
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker:/var/lib/docker:ro
+      - /dev/disk:/dev/disk:ro
+    networks:
+      - monitoring
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 256M
+
+  haproxy-exporter:
+    image: prom/haproxy-exporter:v0.15.0
+    command:
+      - --haproxy.scrape-uri=http://haproxy:8401/stats?stats;csv
+    depends_on:
+      - haproxy
+    networks:
+      - monitoring
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "0.10"
+          memory: 64M
+
+networks:
+  app:
+    driver: bridge
+  database:
+    driver: bridge
+    internal: true
+  monitoring:
+    driver: bridge
+
+volumes:
+  prometheus-data:
+  grafana-data:

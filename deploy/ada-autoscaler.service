@@ -1,0 +1,27 @@
+[Unit]
+Description=Ada cloud web replica autoscaler
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+User=ada
+Group=ada
+SupplementaryGroups=docker
+WorkingDirectory=/opt/ada
+EnvironmentFile=-/etc/ada/cloud.env
+Environment=ADA_PROJECT_DIR=/opt/ada
+Environment=ADA_COMPOSE_FILE=/opt/ada/deploy/edge.compose.yml
+Environment=ADA_HAPROXY_STATS_URL=http://127.0.0.1:8401/stats?stats;csv
+Environment=ADA_WEB_MIN_REPLICAS=3
+Environment=ADA_WEB_MAX_REPLICAS=6
+ExecStart=/usr/bin/python3 /opt/ada/deploy/autoscaler.py
+Restart=always
+RestartSec=10
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
