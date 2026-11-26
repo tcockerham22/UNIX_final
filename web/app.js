@@ -1182,182 +1182,185 @@ function draw(now) {
     ctx.restore();
   }
 
-  // smart module nodes: curved traces from the orb to live status chips
-  const stages = [
-    { key: "input", label: "Input" },
-    { key: "route", label: "Route" },
-    { key: "tools", label: "Tools" },
-    { key: "skill", label: "Skill" },
-    { key: "memory", label: "Memory" },
-    { key: "agents", label: "Agents" },
-    { key: "model", label: "Model" },
-    { key: "voice", label: "Voice" },
-  ];
-  const orbit = base * 2.2;
-  const labelFont = Math.round(10.5 * ui);
-  const valueFont = Math.max(8, Math.round(8.5 * ui));
-  const nodeCount = stages.length;
-  // SIMPLIFY #2: if several stages are active, only the newest one keeps its label.
-  const activeKeys = stages.filter((s) => stageActive(s.key)).map((s) => s.key);
-  const primaryLabelKey = state.lastActiveStage && activeKeys.includes(state.lastActiveStage.key)
-    ? state.lastActiveStage.key
-    : (activeKeys.includes("model") ? "model" : activeKeys[activeKeys.length - 1] || null);
+  // Cloud preview stays simple: skip the tendril/node layer there.
+  if (!cloudOrbOnly) {
+    // Smart module nodes: curved traces from the orb to live status chips.
+    const stages = [
+      { key: "input", label: "Input" },
+      { key: "route", label: "Route" },
+      { key: "tools", label: "Tools" },
+      { key: "skill", label: "Skill" },
+      { key: "memory", label: "Memory" },
+      { key: "agents", label: "Agents" },
+      { key: "model", label: "Model" },
+      { key: "voice", label: "Voice" },
+    ];
+    const orbit = base * 2.2;
+    const labelFont = Math.round(10.5 * ui);
+    const valueFont = Math.max(8, Math.round(8.5 * ui));
+    const nodeCount = stages.length;
+    // SIMPLIFY #2: if several stages are active, only the newest one keeps its label.
+    const activeKeys = stages.filter((s) => stageActive(s.key)).map((s) => s.key);
+    const primaryLabelKey = state.lastActiveStage && activeKeys.includes(state.lastActiveStage.key)
+      ? state.lastActiveStage.key
+      : (activeKeys.includes("model") ? "model" : activeKeys[activeKeys.length - 1] || null);
 
-  // faint dashed bus tying the modules together
-  ctx.save();
-  ctx.setLineDash([2 * ui, 6 * ui]);
-  ctx.globalAlpha = 0.10 + energy * 0.05;
-  ctx.strokeStyle = palette.ring;
-  ctx.lineWidth = Math.max(0.8, ui);
-  ctx.beginPath();
-  ctx.ellipse(cx, cy, orbit, orbit * 0.74, 0, 0, Math.PI * 2);
-  ctx.stroke();
-  ctx.restore();
-
-  for (let i = 0; i < nodeCount; i++) {
-    const st = stages[i];
-    const angle = -Math.PI / 2 + i * (Math.PI * 2 / nodeCount);
-    const dirX = Math.cos(angle);
-    const dirY = Math.sin(angle);
-    const x = cx + dirX * orbit;
-    const y = cy + dirY * orbit * 0.74;
-    const ix = cx + dirX * base * 1.18;
-    const iy = cy + dirY * base * 1.18 * 0.74;
-    const active = stageActive(st.key);
-    const value = stageValue(st.key);
-    // SIMPLIFY #2: inactive labels fade to zero; hover or double-click reveals every label.
-    const revealAll = !SIMPLIFY.activeNodeLabelOnly || state.revealAllLabels || state.pointer.inside;
-    const showLabel = revealAll || st.key === primaryLabelKey;
-    const prevAlpha = state.labelAlpha[st.key] ?? 0;
-    const labelAlpha = prevAlpha + ((showLabel ? 1 : 0) - prevAlpha) * (reduceMotion ? 1 : 0.14);
-    state.labelAlpha[st.key] = labelAlpha;
-
-    // gentle alternating bend so the traces read as circuitry, not spokes
-    const dx = x - ix;
-    const dy = y - iy;
-    const seg = Math.hypot(dx, dy) || 1;
-    const bend = (i % 2 === 0 ? 1 : -1) * base * 0.16;
-    const cxp = ix + dx * 0.5 - (dy / seg) * bend;
-    const cyp = iy + dy * 0.5 + (dx / seg) * bend;
-
+    // faint dashed bus tying the modules together
     ctx.save();
-    ctx.lineCap = "round";
-    ctx.globalAlpha = active ? 0.5 + energy * 0.12 : 0.08;
-    ctx.strokeStyle = active ? palette.core : palette.ring;
-    ctx.lineWidth = Math.max(0.9, (active ? 1.4 : 1) * ui);
+    ctx.setLineDash([2 * ui, 6 * ui]);
+    ctx.globalAlpha = 0.10 + energy * 0.05;
+    ctx.strokeStyle = palette.ring;
+    ctx.lineWidth = Math.max(0.8, ui);
     ctx.beginPath();
-    ctx.moveTo(ix, iy);
-    ctx.quadraticCurveTo(cxp, cyp, x, y);
+    ctx.ellipse(cx, cy, orbit, orbit * 0.74, 0, 0, Math.PI * 2);
     ctx.stroke();
+    ctx.restore();
 
-    if (active) {
-      const flow = (t * (0.28 + energy * 0.22) + i * 0.13) % 1;
-      const inv = 1 - flow;
-      const px = inv * inv * ix + 2 * inv * flow * cxp + flow * flow * x;
-      const py = inv * inv * iy + 2 * inv * flow * cyp + flow * flow * y;
-      ctx.globalAlpha = 0.95;
-      ctx.fillStyle = palette.accent;
-      ctx.beginPath();
-      ctx.arc(px, py, 2 * ui, 0, Math.PI * 2);
-      ctx.fill();
+    for (let i = 0; i < nodeCount; i++) {
+      const st = stages[i];
+      const angle = -Math.PI / 2 + i * (Math.PI * 2 / nodeCount);
+      const dirX = Math.cos(angle);
+      const dirY = Math.sin(angle);
+      const x = cx + dirX * orbit;
+      const y = cy + dirY * orbit * 0.74;
+      const ix = cx + dirX * base * 1.18;
+      const iy = cy + dirY * base * 1.18 * 0.74;
+      const active = stageActive(st.key);
+      const value = stageValue(st.key);
+      // SIMPLIFY #2: inactive labels fade to zero; hover or double-click reveals every label.
+      const revealAll = !SIMPLIFY.activeNodeLabelOnly || state.revealAllLabels || state.pointer.inside;
+      const showLabel = revealAll || st.key === primaryLabelKey;
+      const prevAlpha = state.labelAlpha[st.key] ?? 0;
+      const labelAlpha = prevAlpha + ((showLabel ? 1 : 0) - prevAlpha) * (reduceMotion ? 1 : 0.14);
+      state.labelAlpha[st.key] = labelAlpha;
 
-      const g = ctx.createRadialGradient(x, y, 0, x, y, 20 * ui);
-      g.addColorStop(0, palette.glow);
-      g.addColorStop(1, "rgba(0,0,0,0)");
-      ctx.globalAlpha = 0.9;
-      ctx.fillStyle = g;
-      ctx.beginPath();
-      ctx.arc(x, y, 20 * ui, 0, Math.PI * 2);
-      ctx.fill();
-    }
+      // gentle alternating bend so the traces read as circuitry, not spokes
+      const dx = x - ix;
+      const dy = y - iy;
+      const seg = Math.hypot(dx, dy) || 1;
+      const bend = (i % 2 === 0 ? 1 : -1) * base * 0.16;
+      const cxp = ix + dx * 0.5 - (dy / seg) * bend;
+      const cyp = iy + dy * 0.5 + (dx / seg) * bend;
 
-    const dotR = (active ? 4.4 : 2.8) * ui;
-    ctx.globalAlpha = active ? 1 : 0.45;
-    ctx.fillStyle = active ? palette.core : "rgba(130,175,195,0.6)";
-    ctx.beginPath();
-    ctx.arc(x, y, dotR, 0, Math.PI * 2);
-    ctx.fill();
-    if (active) {
-      ctx.globalAlpha = 0.9;
-      ctx.fillStyle = "#ffffff";
-      ctx.beginPath();
-      ctx.arc(x, y, Math.max(1, 1.5 * ui), 0, Math.PI * 2);
-      ctx.fill();
-    }
-
-    // skill branches fan sideways so they don't sit under the status chip
-    if (st.key === "skill" && state.knownSkills.length) {
-      const dir = Math.cos(angle) >= 0 ? 1 : -1;
-      const baseAng = angle - dir * 0.65;
-      const list = state.knownSkills.slice(0, 5);
-      for (let j = 0; j < list.length; j++) {
-        const name = list[j];
-        const isActive = active && state.activeSkill === name;
-        const a2 = baseAng + (j - (list.length - 1) / 2) * 0.16 * dir;
-        const len = (20 + j * 8) * ui;
-        const sx = x + Math.cos(a2) * len;
-        const sy = y + Math.sin(a2) * len * 0.9;
-        ctx.globalAlpha = isActive ? 0.55 : 0.16;
-        ctx.strokeStyle = isActive ? palette.core : palette.ring;
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.moveTo(x, y);
-        ctx.quadraticCurveTo(x + Math.cos(a2) * len * 0.5, y + Math.sin(a2) * len * 0.45, sx, sy);
-        ctx.stroke();
-        ctx.globalAlpha = isActive ? 0.95 : 0.32;
-        ctx.fillStyle = isActive ? palette.accent : "rgba(150,195,210,0.55)";
-        ctx.beginPath();
-        ctx.arc(sx, sy, isActive ? 2.6 * ui : 1.8 * ui, 0, Math.PI * 2);
-        ctx.fill();
-        if (isActive || (active && j === 0)) {
-          const bx = sx + dir * 6 * ui;
-          const by = sy - 2 * ui;
-          ctx.font = `${isActive ? 500 : 400} ${Math.max(8, labelFont - 2)}px Inter, "Segoe UI", system-ui, sans-serif`;
-          ctx.textAlign = dir > 0 ? "left" : "right";
-          ctx.globalAlpha = isActive ? 0.9 : 0.42;
-          ctx.fillStyle = isActive ? palette.accent : "rgba(170,210,225,0.6)";
-          const txt = name.length > 18 ? name.slice(0, 17) + "…" : name;
-          ctx.fillText(txt, bx, by);
-        }
-      }
-    }
-
-    // SIMPLIFY #2: compact status chip, drawn only while its fade alpha is visible.
-    if (labelAlpha > 0.02) {
-      ctx.font = `600 ${labelFont}px Inter, "Segoe UI", system-ui, sans-serif`;
-      const wLabel = ctx.measureText(st.label).width;
-      ctx.font = `400 ${valueFont}px Inter, "Segoe UI", system-ui, sans-serif`;
-      const wValue = ctx.measureText(value).width;
-      const pw = Math.max(wLabel, wValue) + 14 * ui;
-      const ph = 28 * ui;
-      const align = Math.abs(dirX) < 0.25 ? "center" : (dirX > 0 ? "left" : "right");
-      const lx = x + dirX * 13 * ui;
-      const ly = y + dirY * 13 * ui;
-      const px = align === "center" ? lx - pw / 2 : align === "left" ? lx - 3 * ui : lx - pw + 3 * ui;
-      const py = ly - ph / 2;
-      roundedRect(px, py, pw, ph, 5 * ui);
-      ctx.globalAlpha = (active ? 0.82 : 0.38) * labelAlpha;
-      ctx.fillStyle = active ? "rgba(10,20,24,0.88)" : "rgba(10,18,22,0.55)";
-      ctx.fill();
-      ctx.globalAlpha = (active ? 0.45 : 0.12) * labelAlpha;
+      ctx.save();
+      ctx.lineCap = "round";
+      ctx.globalAlpha = active ? 0.5 + energy * 0.12 : 0.08;
       ctx.strokeStyle = active ? palette.core : palette.ring;
-      ctx.lineWidth = Math.max(0.8, ui);
+      ctx.lineWidth = Math.max(0.9, (active ? 1.4 : 1) * ui);
+      ctx.beginPath();
+      ctx.moveTo(ix, iy);
+      ctx.quadraticCurveTo(cxp, cyp, x, y);
       ctx.stroke();
 
-      const tx = align === "center" ? lx : align === "left" ? px + 7 * ui : px + pw - 7 * ui;
-      ctx.textAlign = align;
-      ctx.textBaseline = "middle";
-      ctx.globalAlpha = (active ? 1 : 0.55) * labelAlpha;
-      ctx.fillStyle = active ? palette.core : "rgba(150,195,210,0.6)";
-      ctx.font = `600 ${labelFont}px Inter, "Segoe UI", system-ui, sans-serif`;
-      ctx.fillText(st.label, tx, ly - 6 * ui);
-      ctx.globalAlpha = (active ? 0.85 : 0.4) * labelAlpha;
-      ctx.fillStyle = active ? palette.accent : "rgba(150,195,210,0.5)";
-      ctx.font = `400 ${valueFont}px Inter, "Segoe UI", system-ui, sans-serif`;
-      ctx.fillText(value, tx, ly + 6 * ui);
-    }
+      if (active) {
+        const flow = (t * (0.28 + energy * 0.22) + i * 0.13) % 1;
+        const inv = 1 - flow;
+        const px = inv * inv * ix + 2 * inv * flow * cxp + flow * flow * x;
+        const py = inv * inv * iy + 2 * inv * flow * cyp + flow * flow * y;
+        ctx.globalAlpha = 0.95;
+        ctx.fillStyle = palette.accent;
+        ctx.beginPath();
+        ctx.arc(px, py, 2 * ui, 0, Math.PI * 2);
+        ctx.fill();
 
-    ctx.restore();
+        const g = ctx.createRadialGradient(x, y, 0, x, y, 20 * ui);
+        g.addColorStop(0, palette.glow);
+        g.addColorStop(1, "rgba(0,0,0,0)");
+        ctx.globalAlpha = 0.9;
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(x, y, 20 * ui, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      const dotR = (active ? 4.4 : 2.8) * ui;
+      ctx.globalAlpha = active ? 1 : 0.45;
+      ctx.fillStyle = active ? palette.core : "rgba(130,175,195,0.6)";
+      ctx.beginPath();
+      ctx.arc(x, y, dotR, 0, Math.PI * 2);
+      ctx.fill();
+      if (active) {
+        ctx.globalAlpha = 0.9;
+        ctx.fillStyle = "#ffffff";
+        ctx.beginPath();
+        ctx.arc(x, y, Math.max(1, 1.5 * ui), 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // skill branches fan sideways so they don't sit under the status chip
+      if (st.key === "skill" && state.knownSkills.length) {
+        const dir = Math.cos(angle) >= 0 ? 1 : -1;
+        const baseAng = angle - dir * 0.65;
+        const list = state.knownSkills.slice(0, 5);
+        for (let j = 0; j < list.length; j++) {
+          const name = list[j];
+          const isActive = active && state.activeSkill === name;
+          const a2 = baseAng + (j - (list.length - 1) / 2) * 0.16 * dir;
+          const len = (20 + j * 8) * ui;
+          const sx = x + Math.cos(a2) * len;
+          const sy = y + Math.sin(a2) * len * 0.9;
+          ctx.globalAlpha = isActive ? 0.55 : 0.16;
+          ctx.strokeStyle = isActive ? palette.core : palette.ring;
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(x, y);
+          ctx.quadraticCurveTo(x + Math.cos(a2) * len * 0.5, y + Math.sin(a2) * len * 0.45, sx, sy);
+          ctx.stroke();
+          ctx.globalAlpha = isActive ? 0.95 : 0.32;
+          ctx.fillStyle = isActive ? palette.accent : "rgba(150,195,210,0.55)";
+          ctx.beginPath();
+          ctx.arc(sx, sy, isActive ? 2.6 * ui : 1.8 * ui, 0, Math.PI * 2);
+          ctx.fill();
+          if (isActive || (active && j === 0)) {
+            const bx = sx + dir * 6 * ui;
+            const by = sy - 2 * ui;
+            ctx.font = `${isActive ? 500 : 400} ${Math.max(8, labelFont - 2)}px Inter, "Segoe UI", system-ui, sans-serif`;
+            ctx.textAlign = dir > 0 ? "left" : "right";
+            ctx.globalAlpha = isActive ? 0.9 : 0.42;
+            ctx.fillStyle = isActive ? palette.accent : "rgba(170,210,225,0.6)";
+            const txt = name.length > 18 ? name.slice(0, 17) + "…" : name;
+            ctx.fillText(txt, bx, by);
+          }
+        }
+      }
+
+      // SIMPLIFY #2: compact status chip, drawn only while its fade alpha is visible.
+      if (labelAlpha > 0.02) {
+        ctx.font = `600 ${labelFont}px Inter, "Segoe UI", system-ui, sans-serif`;
+        const wLabel = ctx.measureText(st.label).width;
+        ctx.font = `400 ${valueFont}px Inter, "Segoe UI", system-ui, sans-serif`;
+        const wValue = ctx.measureText(value).width;
+        const pw = Math.max(wLabel, wValue) + 14 * ui;
+        const ph = 28 * ui;
+        const align = Math.abs(dirX) < 0.25 ? "center" : (dirX > 0 ? "left" : "right");
+        const lx = x + dirX * 13 * ui;
+        const ly = y + dirY * 13 * ui;
+        const px = align === "center" ? lx - pw / 2 : align === "left" ? lx - 3 * ui : lx - pw + 3 * ui;
+        const py = ly - ph / 2;
+        roundedRect(px, py, pw, ph, 5 * ui);
+        ctx.globalAlpha = (active ? 0.82 : 0.38) * labelAlpha;
+        ctx.fillStyle = active ? "rgba(10,20,24,0.88)" : "rgba(10,18,22,0.55)";
+        ctx.fill();
+        ctx.globalAlpha = (active ? 0.45 : 0.12) * labelAlpha;
+        ctx.strokeStyle = active ? palette.core : palette.ring;
+        ctx.lineWidth = Math.max(0.8, ui);
+        ctx.stroke();
+
+        const tx = align === "center" ? lx : align === "left" ? px + 7 * ui : px + pw - 7 * ui;
+        ctx.textAlign = align;
+        ctx.textBaseline = "middle";
+        ctx.globalAlpha = (active ? 1 : 0.55) * labelAlpha;
+        ctx.fillStyle = active ? palette.core : "rgba(150,195,210,0.6)";
+        ctx.font = `600 ${labelFont}px Inter, "Segoe UI", system-ui, sans-serif`;
+        ctx.fillText(st.label, tx, ly - 6 * ui);
+        ctx.globalAlpha = (active ? 0.85 : 0.4) * labelAlpha;
+        ctx.fillStyle = active ? palette.accent : "rgba(150,195,210,0.5)";
+        ctx.font = `400 ${valueFont}px Inter, "Segoe UI", system-ui, sans-serif`;
+        ctx.fillText(value, tx, ly + 6 * ui);
+      }
+
+      ctx.restore();
+    }
   }
 
   requestAnimationFrame(draw);

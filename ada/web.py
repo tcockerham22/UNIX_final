@@ -69,6 +69,11 @@ DOCUMENT_FILENAME = re.compile(
     r"\b[\w .()-]+\.(?:docx?|pdf|pptx?|txt|md|csv|json|rtf)\b",
     re.IGNORECASE,
 )
+SIMPLE_GREETING = re.compile(
+    r"^(?:hi|hello|hey|yo|good (?:morning|afternoon|evening)|thanks|thank you|bye|goodbye)"
+    r"(?:[!,.\s]+(?:ada|there))?[!.?\s]*$",
+    re.IGNORECASE,
+)
 LOGGER = logging.getLogger(__name__)
 
 
@@ -771,6 +776,10 @@ class DashboardHandler(BaseHTTPRequestHandler):
             return
 
         session_id = self._session_id()
+        if SIMPLE_GREETING.match(question):
+            self._stream_simple_reply(session_id, question)
+            return
+
         try:
             history = self.cloud_state.get_history(session_id)
             memory_prompt = PostgresMemory(self.cloud_state, session_id).prompt()
@@ -780,7 +789,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
             rag_error = None
             try:
                 rag = PostgresRAG(self.config.database_url, self.config.ollama_host)
-                retrieved = rag.retrieve(question, top_k=4)
+                retrieved = rag.retrieve(question, top_k=2)
             except Exception as err:
                 rag_error = err
                 LOGGER.warning("RAG retrieval unavailable, falling back to direct chat: %s", err)
@@ -805,7 +814,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
             for item in retrieved
         ]
         context_parts = [
-            f"[Source: {item['source']} | chunk {item['chunk_idx']}]\n{item['content']}"
+            f"[Source: {item['source']} | chunk {item['chunk_idx']}]\n"
+            f"{item['content'][:800]}"
             for item in retrieved
         ]
         if document_context:
@@ -878,8 +888,40 @@ class DashboardHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
         answer_parts = []
+        first_token = True
         try:
             self._send_sse_event("sources", sources)
+            self._send_sse_event(
+                "stage",
+                {
+                    "key": "context",
+                    "label": "Reading conversation context",
+                    "detail": "History, memories, and uploads are ready",
+                    "status": "done",
+                },
+            )
+            self._send_sse_event(
+                "stage",
+                {
+                    "key": "retrieval",
+                    "label": "Searching indexed documents",
+                    "detail": (
+                        f"{len(sources)} passage{'s' if len(sources) != 1 else ''} found"
+                        if sources
+                        else "No matching passages; using general knowledge"
+                    ),
+                    "status": "done",
+                },
+            )
+            self._send_sse_event(
+                "stage",
+                {
+                    "key": "generation",
+                    "label": "Generating answer",
+                    "detail": "Waiting for the first token",
+                    "status": "active",
+                },
+            )
             client = ollama.Client(host=self.config.ollama_host, timeout=120)
             stream = client.chat(
                 model=self.config.cloud_model,
@@ -894,18 +936,173 @@ class DashboardHandler(BaseHTTPRequestHandler):
             )
             for chunk in stream:
                 message = chunk.get("message", {}) if isinstance(chunk, dict) else chunk.message
+                thinking = (
+                    message.get("thinking")
+                    if isinstance(message, dict)
+                    else getattr(message, "thinking", None)
+                )
+                if thinking:
+                    self._send_sse_event("thought", {"text": str(thinking)})
                 content = message.get("content", "") if isinstance(message, dict) else message.content
                 if content:
+                    if first_token:
+                        self._send_sse_event(
+                            "stage",
+                            {
+                                "key": "generation",
+                                "label": "Generating answer",
+                                "detail": "Streaming response",
+                                "status": "done",
+                            },
+                        )
+                        first_token = False
                     answer_parts.append(str(content))
                     self._send_sse_event("token", str(content))
 
             answer = "".join(answer_parts).strip()
             if not answer:
                 raise RuntimeError("The inference service returned an empty answer.")
+            self._send_sse_event(
+                "stage",
+                {
+                    "key": "save",
+                    "label": "Saving conversation",
+                    "detail": "Writing to shared chat history",
+                    "status": "active",
+                },
+            )
             self.cloud_state.append_turn(session_id, question, answer, sources=sources)
+            self._send_sse_event(
+                "stage",
+                {
+                    "key": "save",
+                    "label": "Saving conversation",
+                    "detail": "Saved",
+                    "status": "done",
+                },
+            )
             self._send_sse_event("done", {"answer": answer, "sources": sources})
         except Exception:
             LOGGER.exception("Cloud RAG stream failed")
+            self._send_sse_event(
+                "error",
+                {"error": "Ada's AI service is temporarily unavailable. Please try again."},
+            )
+        finally:
+            self.close_connection = True
+
+    def _stream_simple_reply(self, session_id: str, question: str) -> None:
+        """Answer short social messages without loading the full RAG prompt."""
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+        self.send_header("Cache-Control", "no-cache, no-transform")
+        self.send_header("X-Accel-Buffering", "no")
+        self.send_header("Set-Cookie", self._session_cookie(session_id))
+        self.send_header("Connection", "close")
+        self.end_headers()
+
+        answer_parts = []
+        first_token = True
+        try:
+            self._send_sse_event("sources", [])
+            self._send_sse_event(
+                "stage",
+                {
+                    "key": "context",
+                    "label": "Reading conversation context",
+                    "detail": "No document lookup needed for a quick reply",
+                    "status": "done",
+                },
+            )
+            self._send_sse_event(
+                "stage",
+                {
+                    "key": "retrieval",
+                    "label": "Searching indexed documents",
+                    "detail": "Skipped for a short conversational message",
+                    "status": "done",
+                },
+            )
+            self._send_sse_event(
+                "stage",
+                {
+                    "key": "generation",
+                    "label": "Generating answer",
+                    "detail": "Waiting for the first token",
+                    "status": "active",
+                },
+            )
+            client = ollama.Client(host=self.config.ollama_host, timeout=30)
+            stream = client.chat(
+                model=self.config.cloud_model,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": (
+                            "You are Ada, a concise friendly assistant. "
+                            "Reply in one short sentence. Do not use tools or ask questions back."
+                        ),
+                    },
+                    {"role": "user", "content": question},
+                ],
+                stream=True,
+                options={
+                    "temperature": self.config.temperature,
+                    "num_ctx": 512,
+                    "num_predict": 48,
+                },
+                keep_alive=self.config.keep_alive,
+            )
+            for chunk in stream:
+                message = chunk.get("message", {}) if isinstance(chunk, dict) else chunk.message
+                thinking = (
+                    message.get("thinking")
+                    if isinstance(message, dict)
+                    else getattr(message, "thinking", None)
+                )
+                if thinking:
+                    self._send_sse_event("thought", {"text": str(thinking)})
+                content = message.get("content", "") if isinstance(message, dict) else message.content
+                if content:
+                    if first_token:
+                        self._send_sse_event(
+                            "stage",
+                            {
+                                "key": "generation",
+                                "label": "Generating answer",
+                                "detail": "Streaming response",
+                                "status": "done",
+                            },
+                        )
+                        first_token = False
+                    answer_parts.append(str(content))
+                    self._send_sse_event("token", str(content))
+
+            answer = "".join(answer_parts).strip()
+            if not answer:
+                raise RuntimeError("The inference service returned an empty answer.")
+            self._send_sse_event(
+                "stage",
+                {
+                    "key": "save",
+                    "label": "Saving conversation",
+                    "detail": "Writing to shared chat history",
+                    "status": "active",
+                },
+            )
+            self.cloud_state.append_turn(session_id, question, answer, sources=[])
+            self._send_sse_event(
+                "stage",
+                {
+                    "key": "save",
+                    "label": "Saving conversation",
+                    "detail": "Saved",
+                    "status": "done",
+                },
+            )
+            self._send_sse_event("done", {"answer": answer, "sources": []})
+        except Exception:
+            LOGGER.exception("Cloud quick reply failed")
             self._send_sse_event(
                 "error",
                 {"error": "Ada's AI service is temporarily unavailable. Please try again."},

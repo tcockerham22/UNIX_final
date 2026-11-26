@@ -21,6 +21,10 @@ const sameOriginFetch = { credentials: "same-origin" };
 let orbState = "idle";
 let orbDetail = "ready when you are";
 
+function scrollToBottom() {
+  conversation.scrollTop = conversation.scrollHeight;
+}
+
 function syncEmptyState() {
   if (!emptyState) return;
   const hasMessages = conversation.querySelector(".message");
@@ -85,7 +89,7 @@ function addMessage(role, text, sources = []) {
   }
   conversation.append(article);
   syncEmptyState();
-  conversation.scrollTo({ top: conversation.scrollHeight, behavior: "smooth" });
+  scrollToBottom();
   return { article, content };
 }
 
@@ -108,6 +112,74 @@ function renderSources(article, sources) {
     sourceList.append(item);
   }
   article.append(sourceList);
+}
+
+function addThinking() {
+  const panel = document.createElement("section");
+  panel.className = "thinking-panel";
+
+  const title = document.createElement("div");
+  title.className = "thinking-title";
+  title.textContent = "Ada is thinking";
+
+  const stages = document.createElement("div");
+  stages.className = "thinking-stages";
+
+  const reasoning = document.createElement("div");
+  reasoning.className = "thinking-reasoning";
+  reasoning.hidden = true;
+
+  panel.append(title, stages, reasoning);
+  conversation.append(panel);
+  scrollToBottom();
+  return { panel, title, stages, reasoning };
+}
+
+function setThinkingStage(thinking, data) {
+  const key = String(data.key || "step");
+  let row = Array.from(thinking.stages.children).find((node) => node.dataset.key === key);
+  if (!row) {
+    row = document.createElement("div");
+    row.className = "thinking-stage";
+    row.dataset.key = key;
+    const marker = document.createElement("span");
+    marker.className = "thinking-stage-marker";
+    marker.setAttribute("aria-hidden", "true");
+    const text = document.createElement("span");
+    text.className = "thinking-stage-text";
+    row.append(marker, text);
+    thinking.stages.append(row);
+  }
+  row.dataset.status = data.status || "active";
+  const detail = data.detail ? ` — ${data.detail}` : "";
+  row.querySelector(".thinking-stage-text").textContent = `${data.label || key}${detail}`;
+  scrollToBottom();
+}
+
+function finishThinking(thinking, failed = false) {
+  for (const row of thinking.stages.children) {
+    if (row.dataset.status === "active") {
+      row.dataset.status = failed ? "error" : "done";
+    }
+  }
+  thinking.title.textContent = failed ? "Thinking interrupted" : "How Ada worked";
+  scrollToBottom();
+}
+
+function appendThought(thinking, text) {
+  const content = String(text || "");
+  if (!content.trim()) return;
+  thinking.reasoning.hidden = false;
+  if (!thinking.reasoning.querySelector(".thinking-reasoning-label")) {
+    const label = document.createElement("span");
+    label.className = "thinking-reasoning-label";
+    label.textContent = "Model reasoning";
+    thinking.reasoning.append(label);
+  }
+  const paragraph = document.createElement("p");
+  paragraph.textContent = content;
+  thinking.reasoning.append(paragraph);
+  scrollToBottom();
 }
 
 async function readJsonResponse(response) {
@@ -292,13 +364,13 @@ composer.addEventListener("submit", async (event) => {
 
   notice.textContent = "";
   addMessage("user", message);
+  const thinking = addThinking();
   messageInput.value = "";
   autoResizeTextarea();
   sendButton.disabled = true;
   messageInput.disabled = true;
   setServiceState("Thinking", "thinking");
   setOrbState("thinking", "thinking");
-  showTyping();
 
   const controller = new AbortController();
   const timeoutId = window.setTimeout(() => controller.abort(), 120000);
@@ -317,6 +389,7 @@ composer.addEventListener("submit", async (event) => {
     }
     if (response.headers.get("content-type")?.includes("application/json")) {
       const result = await readJsonResponse(response);
+      finishThinking(thinking);
       addMessage("assistant", result.answer, result.sources || []);
       setServiceState("Ready", "ready");
       setOrbState("speaking", "reply complete");
@@ -347,14 +420,20 @@ composer.addEventListener("submit", async (event) => {
           if (eventName === "sources") {
             sources = data;
             assistantMessage = addMessage("assistant", "", sources);
+          } else if (eventName === "stage") {
+            setThinkingStage(thinking, data);
+            setServiceState(data.label || "Thinking", "thinking");
+            setOrbState("thinking", data.detail || data.label || "thinking");
+          } else if (eventName === "thought") {
+            appendThought(thinking, data.text);
           } else if (eventName === "token") {
-            hideTyping();
             if (!assistantMessage) assistantMessage = addMessage("assistant", "", sources);
             answer += data;
             assistantMessage.content.textContent = answer;
-            conversation.scrollTop = conversation.scrollHeight;
+            scrollToBottom();
           } else if (eventName === "done") {
             completed = true;
+            finishThinking(thinking);
             renderSources(assistantMessage?.article, data.sources || sources);
           } else if (eventName === "error") {
             throw new Error(data.error || "Ada's AI service is temporarily unavailable.");
@@ -371,14 +450,13 @@ composer.addEventListener("submit", async (event) => {
         throw new Error("Ada's response stream ended unexpectedly.");
       }
     }
-    hideTyping();
     setServiceState("Ready", "ready");
     setOrbState("speaking", "reply complete");
     window.setTimeout(() => {
       if (!sendButton.disabled) setOrbState("idle", "ready when you are");
     }, 1400);
   } catch (error) {
-    hideTyping();
+    finishThinking(thinking, true);
     const messageText = error?.name === "AbortError"
       ? "Ada took too long to respond. Please try again."
       : (error.message || "Ada's AI service is temporarily unavailable. Please try again shortly.");
