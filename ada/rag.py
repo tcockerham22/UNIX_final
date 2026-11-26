@@ -154,12 +154,12 @@ class PostgresRAG:
         if not database_url:
             raise RuntimeError("ADA_DATABASE_URL must be set in the cloud profile.")
         self.database_url = database_url
-        self.client = ollama.Client(host=ollama_host)
+        self.client = ollama.Client(host=ollama_host, timeout=30)
 
     def _connect(self):
         import psycopg
 
-        return psycopg.connect(self.database_url)
+        return psycopg.connect(self.database_url, connect_timeout=5)
 
     def ensure_schema(self) -> None:
         """Create the required pgvector extension, table, and cosine index."""
