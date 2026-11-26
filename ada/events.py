@@ -91,3 +91,8 @@ def emit(event_type: str, *, force: bool = False, **data) -> dict | None:
     if getattr(_quiet, "active", False) and not force:
         return None
     return bus.publish(event_type, **data)
+
+
+def emit_assistant(text: str, **extra) -> dict | None:
+    """A finished assistant turn. The dashboard only leaves THINKING on these."""
+    return emit("assistant", text=text, final=True, **extra)

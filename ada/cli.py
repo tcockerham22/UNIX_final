@@ -16,7 +16,8 @@ import ollama
 
 from . import tools as tool_mod
 from .config import Config
-from .events import emit
+from .cloud_state import PostgresMemory, PostgresState
+from .events import emit, emit_assistant
 from .memory import Memory
 from .skills import SkillStore
 
@@ -27,13 +28,15 @@ TOOL_HINTS = re.compile(
     r"news|headlines?|latest|newest|current|currently|today|tonight|tomorrow|yesterday|now|"
     r"price|prices|cost|stocks?|shares?|market|score|scores?|won|winner|match|game|election|"
     r"release[ds]?|version|update|search|google|look up|find out|online|website|url|link|"
+    r"research|look into|investigate|findings|information|sub.?agents?|spawn|pepper|"
     r"wikipedia|population|exchange rate|how much|how many people|what time|time is it|"
     r"date is it|remember|memorize|memorise|forget|don't forget|keep in mind|commit .*memory|commit .*to memory|save .*to memory|store .*in memory|add .*to memory|note that|"
     r"learn(?:ed|ing)?|skill|skills|save skill|teach you|study|"
     r"upload(?:ed|s)?|document(?:s)?|paper(?:s)?|slide(?:s)?|presentation(?:s)?|pdf|pptx?|docx?|attachment(?:s)?|"
     r"code|coding|program|script|function|class|bug|debug|fix|implement|refactor|"
     r"file|folder|directory|read|write|edit|create|run|execute|command|terminal|shell|"
-    r"install|build|test|git|python|javascript|typescript|bash)\b"
+    r"install|build|test|git|python|javascript|typescript|bash|"
+    r"image|picture|draw|drawing|diagram|chart|flowchart|illustration|graphic|svg)\b"
     r"|https?://|www\.|[~/][\w./-]+",
     re.IGNORECASE,
 )
@@ -208,6 +211,11 @@ def build_system_prompt(config: Config, memory: Memory, tools_enabled: bool) -> 
             "(read-only by default), return a concise result, and cannot spawn further helpers. Synthesise their "
             "results into your own answer rather than forwarding them verbatim. Do not delegate greetings or simple questions.\n"
         )
+        prompt += (
+            "CREATING VISUALS: When asked for an image, picture, illustration, diagram, chart or flowchart, "
+            "call generate_image or generate_diagram with a detailed description. The tool saves the file and "
+            "returns its path; tell the user where it is. Do not claim an image was created unless the tool returned a path.\n"
+        )
         skills = SkillStore(config.skills_dir)
         prompt += "\n## Skills\n"
         if len(skills):
@@ -309,7 +317,7 @@ def auto_remember_from_turn(config: Config, history: list[dict], memory: Memory,
         )
         if "qwen3" in (model or "").lower():
             chat_kwargs["think"] = False
-        resp = ollama.chat(**chat_kwargs)
+        resp = _ollama_chat(config, **chat_kwargs)
         msg = resp.get("message", {}) if isinstance(resp, dict) else getattr(resp, "message", {})
         content = (msg.get("content") or "") if isinstance(msg, dict) else (getattr(msg, "content", "") or "")
         items = _extract_json_array(content) or []
@@ -353,7 +361,7 @@ def stream_reply(config: Config, history: list[dict], memory: Memory, model: str
             config.quick_max_tokens if model == config.fast_model else config.deep_max_tokens
         ),
     }
-    tools = tool_mod.TOOLS if tools_enabled else None
+    tools = tool_mod.available_tools(config) if tools_enabled else None
 
     for _round in range(6):
         content_parts: list[str] = []
@@ -376,7 +384,7 @@ def stream_reply(config: Config, history: list[dict], memory: Memory, model: str
         )
         if "qwen3" in (model or "").lower():
             chat_kwargs["think"] = False
-        stream = ollama.chat(**chat_kwargs)
+        stream = _ollama_chat(config, **chat_kwargs)
         printing = False
         for chunk in stream:
             message = chunk["message"]
@@ -437,6 +445,13 @@ def stream_reply(config: Config, history: list[dict], memory: Memory, model: str
     return "I am sorry, I could not finish that request."
 
 
+def _ollama_chat(config: Config, **kwargs):
+    """Use the configured inference pool in cloud mode and the local default otherwise."""
+    if config.profile == "cloud":
+        return ollama.Client(host=config.ollama_host).chat(**kwargs)
+    return ollama.chat(**kwargs)
+
+
 def trim_history(history: list[dict]) -> None:
     if len(history) > HISTORY_LIMIT + 1:
         del history[1 : len(history) - HISTORY_LIMIT]
@@ -455,13 +470,13 @@ def warm_model(config: Config, memory: Memory, tools_enabled: bool = True) -> bo
                 {"role": "system", "content": build_system_prompt(config, memory, tools_enabled)},
                 {"role": "user", "content": "Hello"},
             ],
-            tools=tool_mod.TOOLS if tools_enabled else None,
+            tools=tool_mod.available_tools(config) if tools_enabled else None,
             options={"num_predict": 1, "num_ctx": config.num_ctx},
             keep_alive=config.keep_alive,
         )
         if "qwen3" in (warm or "").lower():
             warm_kwargs["think"] = False
-        ollama.chat(**warm_kwargs)
+        _ollama_chat(config, **warm_kwargs)
         emit("state", state="idle", detail="model ready")
         return True
     except Exception as err:
@@ -628,7 +643,7 @@ def respond(user_text: str, config: Config, history: list[dict], memory: Memory,
 
     if reply:
         history.append({"role": "assistant", "content": reply})
-        emit("assistant", text=reply)
+        emit_assistant(reply)
         if voice_out:
             emit("state", state="speaking", detail=config.voice)
             interrupted_text = None
@@ -746,7 +761,7 @@ def learn_skill(topic: str, config: Config, voice_out=None) -> str:
     else:
         model = getattr(config, "deep_model", config.model)
     try:
-        resp = ollama.chat(
+        resp = _ollama_chat(config,
             model=model,
             messages=[{"role": "user", "content": prompt}],
             options={"temperature": 0.2, "num_ctx": max(config.num_ctx, 8192), "num_predict": predict},
@@ -759,7 +774,7 @@ def learn_skill(topic: str, config: Config, voice_out=None) -> str:
             if not fb or fb == model:
                 continue
             try:
-                resp = ollama.chat(
+                resp = _ollama_chat(config,
                     model=fb,
                     messages=[{"role": "user", "content": prompt}],
                     options={"temperature": 0.2, "num_ctx": config.num_ctx, "num_predict": min(predict, 1400)},
@@ -827,6 +842,8 @@ def print_help(config: Config, tools_enabled: bool) -> None:
   /skill <name>      show a saved skill
   /learn <topic>     research and save a new skill
   /agent <task>      delegate a task to a sub-agent
+  /image <prompt>    generate an image and save it
+  /diagram <spec>    generate a labelled diagram
   /say <text>        test the voice
   /light <text>      force light model ({light})
   /moderate <text>   force moderate model ({mod})
@@ -898,7 +915,7 @@ def chat_loop(config: Config, history: list[dict], memory: Memory, speaker,
             emit("user", text=line)
             result = learn_skill(topic, config, voice_out)
             print(f"Ada: {result}")
-            emit("assistant", text=result)
+            emit_assistant(result)
             continue
         if line == "/agent" or line.startswith("/agent "):
             task = line[len("/agent"):].strip()
@@ -909,7 +926,37 @@ def chat_loop(config: Config, history: list[dict], memory: Memory, speaker,
             emit("user", text=line)
             result = run_subagent(task, config, memory)
             print(f"Ada: {result}")
-            emit("assistant", text=result)
+            emit_assistant(result)
+            continue
+        if line in {"/image", "/diagram"} or line.startswith(("/image ", "/diagram ")):
+            kind = "diagram" if line.startswith("/diagram") else "image"
+            spec = line[len(kind) + 1:].strip()
+            if not spec:
+                print(f"Usage: /{kind} <description>")
+                continue
+            from .images import generate_diagram, generate_image
+            tool_name = "generate_image" if kind == "image" else "generate_diagram"
+            tool_args = {"prompt": spec} if kind == "image" else {"spec": spec}
+            emit("user", text=line)
+            emit("state", state="thinking", detail=f"generating {kind}…")
+            emit("tool", name=tool_name, args=tool_args, status="start")
+            print(f"[{kind}] working on it… (this can take a minute)", flush=True)
+            try:
+                result = (
+                    generate_diagram(spec, config)
+                    if kind == "diagram"
+                    else generate_image(spec, config)
+                )
+            except Exception as err:
+                result = f"ERROR: {type(err).__name__}: {err}"
+            emit(
+                "tool", name=tool_name, args=tool_args, status="done",
+                result=result[:300] + "…" if len(result) > 300 else result,
+            )
+            failed = result.startswith("ERROR:")
+            emit("state", state="idle", detail=f"{kind} failed" if failed else f"{kind} ready")
+            print(f"Ada: {result}", flush=True)
+            emit_assistant(result)
             continue
         if line == "/model":
             light = getattr(config, "light_model", config.fast_model)
@@ -982,7 +1029,7 @@ def chat_loop(config: Config, history: list[dict], memory: Memory, speaker,
             saved = memory.add(remember_fact, cat)
             result_msg = f"Saved to memory [{cat}]: {remember_fact}" if saved else f"I already have that in memory: {remember_fact}"
             print(f"Ada: {result_msg}")
-            emit("assistant", text=result_msg)
+            emit_assistant(result_msg)
             if voice_out and config.speak:
                 say(speaker, voice_out, "Saved to memory." if saved else "I already remember that.")
             continue
@@ -992,7 +1039,7 @@ def chat_loop(config: Config, history: list[dict], memory: Memory, speaker,
             emit("user", text=line)
             result_msg = learn_skill(learn_topic, config, voice_out)
             print(f"Ada: {result_msg}")
-            emit("assistant", text=result_msg)
+            emit_assistant(result_msg)
             if voice_out and config.speak:
                 say(speaker, voice_out, result_msg if len(result_msg) < 400 else "I researched the topic and saved a detailed skill.")
             continue
@@ -1095,7 +1142,7 @@ def hands_free_loop(config: Config, history: list[dict], memory: Memory, speaker
                 saved = memory.add(remember_fact, cat)
                 result_msg = f"Saved to memory [{cat}]: {remember_fact}" if saved else f"I already have that in memory: {remember_fact}"
                 print(f"Ada: {result_msg}")
-                emit("assistant", text=result_msg)
+                emit_assistant(result_msg)
                 if voice_out and config.speak:
                     say(speaker, voice_out, "Saved to memory." if saved else "I already remember that.")
                 result = True
@@ -1105,7 +1152,7 @@ def hands_free_loop(config: Config, history: list[dict], memory: Memory, speaker
                     emit("user", text=text)
                     result_msg = learn_skill(learn_topic, config, voice_out)
                     print(f"Ada: {result_msg}")
-                    emit("assistant", text=result_msg)
+                    emit_assistant(result_msg)
                     if voice_out and config.speak:
                         say(speaker, voice_out, result_msg if len(result_msg) < 400 else "I researched the topic and saved a detailed skill.")
                     result = True
@@ -1171,11 +1218,16 @@ def main() -> None:
     if args.no_barge_in:
         config.barge_in = False
 
-    memory = Memory(config.memory_file)
-    try:
-        tool_mod.ensure_reminders(config)
-    except Exception:
-        pass
+    # Re-apply profile restrictions after command-line flags have been parsed.
+    config.enforce_profile()
+    if config.profile == "cloud":
+        memory = PostgresMemory(PostgresState(config.database_url))
+    else:
+        memory = Memory(config.memory_file)
+        try:
+            tool_mod.ensure_reminders(config)
+        except Exception:
+            pass
     history: list[dict] = [{"role": "system", "content": ""}]
     tools_enabled = not args.no_tools
 
@@ -1265,4 +1317,3 @@ def main() -> None:
 
     if voice_out:
         voice_out.wait()
-

@@ -2,6 +2,8 @@
 
 Defaults live here. Override any value in config.json or with an ADA_* environment
 variable (for example ADA_MODEL, ADA_FAST_MODEL, ADA_VOICE, ADA_USER_NAME).
+Set ADA_PROFILE=cloud to disable local-only integrations and use PostgreSQL plus
+the configured Ollama inference endpoint.
 """
 
 from __future__ import annotations
@@ -126,6 +128,8 @@ def _cast(value, default):
 
 @dataclass
 class Config:
+    # The local profile remains the default so existing installations keep working.
+    profile: str = "local"
     user_name: str = "Sam"
     sensitive_note: str = "This includes the garage door."
 
@@ -139,6 +143,10 @@ class Config:
     auto_route: bool = False
     auto_tools: bool = False
     keep_alive: str = "10m"
+    # Cloud services override these connection values through environment variables.
+    cloud_model: str = "qwen3.5:4b"
+    ollama_host: str = "http://127.0.0.1:11434"
+    database_url: str | None = None
     num_ctx: int = 4096
     temperature: float = 0.7
     light_max_tokens: int = 220
@@ -202,6 +210,22 @@ class Config:
     allowed_paths: list[str] = field(default_factory=list)  # if set, restrict file/command cwd to these roots
     confirm_dangerous_commands: bool = False
     command_allowlist: list[str] = field(default_factory=list)
+
+    # Image / diagram generation
+    image_backend: str = "auto"  # legacy; image_api_url is used whenever configured
+    image_api_url: str | None = None  # e.g. http://127.0.0.1:7860 (SD WebUI)
+    image_dir: str = str(DATA_DIR / "generated")
+    image_model: str = ""  # blank -> deep_model for SVG generation
+    image_size: int = 1024
+    image_max_tokens: int = 4096
+    image_svg_fallback: bool = True
+    image_steps: int = 30
+    image_sampler: str = "DPM++ 2M Karras"
+    image_negative_prompt: str = (
+        "low quality, low resolution, blurry, out of focus, jpeg artifacts, "
+        "watermark, signature, distorted proportions, malformed anatomy, "
+        "extra limbs, extra fingers, missing fingers, fused fingers"
+    )
 
     # Learning
     learn_depth: str = "deep"  # quick | deep
@@ -274,11 +298,49 @@ class Config:
                 continue
             clean[key] = value
         cfg = cls(**clean)
+        cfg.enforce_profile()
         # keep aliases in sync
         cfg.fast_model = cfg.light_model
         cfg.model = cfg.deep_model
         cfg.quick_max_tokens = cfg.light_max_tokens
         return cfg
+
+    def enforce_profile(self) -> None:
+        """Apply non-overridable runtime restrictions for the selected profile."""
+        self.profile = str(self.profile or "local").strip().lower()
+        if self.profile not in {"local", "cloud"}:
+            raise ValueError("ADA_PROFILE must be either 'local' or 'cloud'.")
+
+        # Cloud workers must not inherit machine-specific integrations from config.json.
+        if self.profile == "cloud":
+            self.speak = False
+            self.stt_enabled = False
+            self.voice_input = False
+            self.hands_free = False
+            self.flow_mode = False
+            self.barge_in = False
+            self.require_wake_word = False
+            self.wake_words = []
+            self.ha_url = None
+            self.ha_token = None
+            self.ha_notify_service = None
+            self.ha_context_entity = None
+            self.agents_enabled = False
+            self.auto_route = False
+            self.light_model = self.cloud_model
+            self.moderate_model = self.cloud_model
+            self.deep_model = self.cloud_model
+            self.fast_model = self.cloud_model
+            self.model = self.cloud_model
+            self.web_host = "0.0.0.0"
+            self.ollama_host = os.environ.get(
+                "ADA_OLLAMA_HOST",
+                os.environ.get("OLLAMA_HOST", self.ollama_host),
+            )
+            self.database_url = os.environ.get(
+                "ADA_DATABASE_URL",
+                os.environ.get("DATABASE_URL", self.database_url),
+            )
 
     @property
     def models(self) -> dict:

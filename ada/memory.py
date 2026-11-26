@@ -137,7 +137,8 @@ class Memory:
     def all(self) -> list[dict]:
         return list(self.items)
 
-    def suggest_category(self, fact: str) -> str:
+    @staticmethod
+    def suggest_category(fact: str) -> str:
         f = fact.lower()
         if any(k in f for k in ["prefer", "likes", "like ", "favorite", "favourite", "wants", "dislikes"]):
             return "preference"
