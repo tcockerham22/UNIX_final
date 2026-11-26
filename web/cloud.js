@@ -299,7 +299,9 @@ composer.addEventListener("submit", async (event) => {
   setServiceState("Thinking", "thinking");
   setOrbState("thinking", "thinking");
   showTyping();
-  showTyping();
+
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), 120000);
 
   try {
     const response = await fetch("/api/rag/chat", {
@@ -307,6 +309,7 @@ composer.addEventListener("submit", async (event) => {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ message }),
+      signal: controller.signal,
     });
     if (!response.ok) {
       const error = await readJsonResponse(response);
@@ -345,7 +348,8 @@ composer.addEventListener("submit", async (event) => {
             sources = data;
             assistantMessage = addMessage("assistant", "", sources);
           } else if (eventName === "token") {
-            if (!assistantMessage) assistantMessage = addMessage("assistant", "");
+            hideTyping();
+            if (!assistantMessage) assistantMessage = addMessage("assistant", "", sources);
             answer += data;
             assistantMessage.content.textContent = answer;
             conversation.scrollTop = conversation.scrollHeight;
@@ -361,8 +365,13 @@ composer.addEventListener("submit", async (event) => {
       if (done) break;
     }
     if (!completed) {
-      throw new Error("Ada's response stream ended unexpectedly.");
+      if (answer.trim()) {
+        renderSources(assistantMessage?.article, sources);
+      } else {
+        throw new Error("Ada's response stream ended unexpectedly.");
+      }
     }
+    hideTyping();
     setServiceState("Ready", "ready");
     setOrbState("speaking", "reply complete");
     window.setTimeout(() => {
@@ -370,10 +379,14 @@ composer.addEventListener("submit", async (event) => {
     }, 1400);
   } catch (error) {
     hideTyping();
-    addMessage("error", error.message || "Ada's AI service is temporarily unavailable. Please try again shortly.");
+    const messageText = error?.name === "AbortError"
+      ? "Ada took too long to respond. Please try again."
+      : (error.message || "Ada's AI service is temporarily unavailable. Please try again shortly.");
+    addMessage("error", messageText);
     setServiceState("Unavailable", "error");
     setOrbState("error", "AI service unavailable");
   } finally {
+    window.clearTimeout(timeoutId);
     sendButton.disabled = false;
     messageInput.disabled = false;
     messageInput.focus();
