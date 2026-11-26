@@ -81,6 +81,13 @@ body {
 #link-text.online { color: var(--green); }
 #link-text.offline { color: var(--red); }
 
+/* SIMPLIFY #1: state word + one "<tier> · <model> · live" line.
+   The detail line and tier row stay in the DOM/data flow; tiers return on hover. */
+body[data-compact-status="1"] .detail,
+body[data-compact-status="1"] .tiers { display: none; }
+body[data-compact-status="1"] .hud { pointer-events: auto; }
+body[data-compact-status="1"] .hud:hover .tiers { display: block; }
+
 .upload-panel {
   position: absolute;
   right: 14px;

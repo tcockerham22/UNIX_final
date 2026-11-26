@@ -1,5 +1,13 @@
 "use strict";
 
+const cloudOrbOnly = document.body.dataset.cloudOrbOnly === "true";
+const ADA_SERVICE_ORIGIN = location.port === "8765"
+  ? ""
+  : location.protocol === "file:"
+    ? "http://127.0.0.1:8765"
+    : `${location.protocol}//${location.hostname || "127.0.0.1"}:8765`;
+const adaServiceUrl = (path) => `${ADA_SERVICE_ORIGIN}${path}`;
+
 const els = {
   canvas: document.getElementById("orb"),
   stateLabel: document.getElementById("state-label"),
@@ -18,6 +26,18 @@ const els = {
 
 const ctx = els.canvas ? els.canvas.getContext("2d") : null;
 const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+// SIMPLIFY toggles: set any value to false to bring that decorative layer back.
+const SIMPLIFY = {
+  compactStatus: true,       // #1 two HUD lines; tiers row hidden until hover
+  activeNodeLabelOnly: true, // #2 inactive module labels fade out; hover/dbl-click reveals all
+  hideGridAndBrackets: false, // #3 grid + corner brackets restored, but softened by FLAIR
+  singleOrbitRing: false,     // #4 original ring layer restored, but softened by FLAIR
+  minimalParticles: false,    // #5 full particle field restored, but slowed/dimmed by FLAIR
+};
+// FLAIR: 0 = plain simplified view, 1 = original decoration intensity.
+const FLAIR = 0.55;
+document.body.dataset.compactStatus = SIMPLIFY.compactStatus ? "1" : "0";
 
 const STATE_LABELS = {
   idle: "IDLE",
@@ -53,10 +73,21 @@ const state = {
   voiceLevelTarget: 0,
   activeSkill: "",
   knownSkills: [],
+  activeAgents: 0,
+  agentRuns: 0,
+  toolCalls: 0,
+  inputMode: "text",
+  voiceName: "",
   tiers: { light: "—", moderate: "—", deep: "—" },
   knowledge: { memories: 0, skills: 0, uploads: 0 },
   ripples: [],
   lastRippleAt: 0,
+  lastEventId: 0,   // ignore replayed events after an SSE reconnect
+  // SIMPLIFY #2: per-node label fade state and reveal controls
+  lastActiveStage: null,
+  labelAlpha: {},
+  revealAllLabels: false,
+  pointer: { x: -1, y: -1, inside: false },
 };
 
 const particles = Array.from({ length: 48 }, () => ({
@@ -84,6 +115,10 @@ const fireflies = Array.from({ length: 14 }, () => ({
   warm: Math.random(),
 }));
 
+// SIMPLIFY #5: work from small, slow subsets without touching the source arrays.
+const particleDots = SIMPLIFY.minimalParticles ? particles.slice(0, 6) : particles;
+const fireflyDots = SIMPLIFY.minimalParticles ? fireflies.slice(0, 4) : fireflies;
+
 function setLink(online) {
   if (!els.linkText) return;
   els.linkText.textContent = online ? "live" : "offline";
@@ -93,6 +128,7 @@ function setLink(online) {
 
 function activateStage(stage, ttl = 0) {
   state.activeStages.add(stage);
+  state.lastActiveStage = { key: stage, at: Date.now() };
   const existing = state.stageTimers.get(stage);
   if (existing) clearTimeout(existing);
   if (ttl > 0) {
@@ -122,6 +158,39 @@ function stageActive(stage) {
   if (stage === "memory") return state.activeStages.has("memory");
   if (stage === "agents") return state.activeStages.has("agents");
   return false;
+}
+
+function roundedRect(x, y, w, h, r) {
+  const rr = Math.max(0, Math.min(r, w / 2, h / 2));
+  ctx.beginPath();
+  ctx.moveTo(x + rr, y);
+  ctx.arcTo(x + w, y, x + w, y + h, rr);
+  ctx.arcTo(x + w, y + h, x, y + h, rr);
+  ctx.arcTo(x, y + h, x, y, rr);
+  ctx.arcTo(x, y, x + w, y, rr);
+  ctx.closePath();
+}
+
+function stageValue(key) {
+  switch (key) {
+    case "input": return state.inputMode || "text";
+    case "route": return (state.route || "—").split(" · ")[0];
+    case "tools": return state.toolCalls
+      ? `${state.toolCalls} call${state.toolCalls === 1 ? "" : "s"}` : "ready";
+    case "skill": return state.knownSkills.length
+      ? `${state.knowledge.skills || state.knownSkills.length} saved` : "none";
+    case "memory": {
+      const count = state.knowledge.memories || 0;
+      return `${count} fact${count === 1 ? "" : "s"}`;
+    }
+    case "agents": return state.activeAgents
+      ? `${state.activeAgents} active`
+      : state.agentRuns ? `${state.agentRuns} run${state.agentRuns === 1 ? "" : "s"}` : "idle";
+    case "model": return `${tierLabel(state.model) || "model"} · ${shortModel(state.model)}`;
+    case "voice": return state.voiceActive ? "speaking"
+      : state.voiceName ? shortModel(state.voiceName) : "—";
+    default: return "";
+  }
 }
 
 function shortModel(m) {
@@ -169,13 +238,29 @@ function setState(name, detail) {
   }
 }
 
+// The cloud chat page controls this same renderer across its iframe boundary.
+window.addEventListener("message", (event) => {
+  if (!cloudOrbOnly || event.origin !== location.origin || event.source !== window.parent) return;
+  const message = event.data;
+  if (!message || message.type !== "ada-cloud-orb-state") return;
+  setState(message.state, message.detail);
+});
+
 function setRoute(label, model, tools) {
   state.route = label ? `${label}${tools === false ? " · no tools" : tools ? " · tools" : ""}` : "—";
   if (model) state.model = model;
-  if (els.routeText) els.routeText.textContent = `route ${state.route}`;
+  // SIMPLIFY #1: compact line reads "<tier> · <model> · live"; state.route is untouched.
+  if (els.routeText) {
+    els.routeText.textContent = SIMPLIFY.compactStatus
+      ? (tierLabel(model) || label || "—")
+      : `route ${state.route}`;
+  }
   if (els.modelText) {
     const t = tierLabel(state.model);
-    els.modelText.textContent = t ? `${t} · ${shortModel(state.model)}` : shortModel(state.model);
+    // SIMPLIFY #1: tier already sits in the first slot, so avoid repeating it here.
+    els.modelText.textContent = SIMPLIFY.compactStatus
+      ? shortModel(state.model)
+      : (t ? `${t} · ${shortModel(state.model)}` : shortModel(state.model));
   }
   if (label) activateStage("route", 2500);
 }
@@ -190,6 +275,10 @@ function resetView() {
 }
 
 function handleEvent(event) {
+  // SSE replays history after a reconnect. Never let an older event overwrite
+  // a newer live state (e.g. an old IDLE event arriving during a long THINK).
+  if (event.id && event.id <= state.lastEventId) return;
+  if (event.id) state.lastEventId = event.id;
   const data = event.data || {};
   switch (event.type) {
     case "session":
@@ -200,6 +289,8 @@ function handleEvent(event) {
         els.tiersText.textContent = `light ${shortModel(state.tiers.light)} · moderate ${shortModel(state.tiers.moderate)} · deep ${shortModel(state.tiers.deep)}`;
       }
       setRoute("—", `${state.tiers.light} / ${state.tiers.moderate} / ${state.tiers.deep}`);
+      if (data.input) state.inputMode = String(data.input);
+      if (data.voice) state.voiceName = String(data.voice);
       if (Array.isArray(data.skills_list)) {
         state.knownSkills = data.skills_list.map(s => s.name || s).filter(Boolean).slice(0, 8);
       }
@@ -222,11 +313,18 @@ function handleEvent(event) {
     case "action":
       activateStage("tools", 2500);
       break;
+    case "image":
+      activateStage("tools", 2500);
+      spawnRipple("learn", 0.9);
+      break;
     case "agent":
       if (data.status === "start") {
+        state.activeAgents += 1;
+        state.agentRuns += 1;
         activateStage("agents");
         spawnRipple("learn", 0.85);
       } else {
+        state.activeAgents = Math.max(0, state.activeAgents - 1);
         activateStage("agents", 2500);
       }
       break;
@@ -244,6 +342,7 @@ function handleEvent(event) {
       break;
     case "tool":
       if (data.status === "start") {
+        state.toolCalls += 1;
         activateStage("tools");
         if (data.name === "read_skill" || data.name === "save_skill") {
           activateStage("skill");
@@ -279,7 +378,9 @@ function handleEvent(event) {
       }
       break;
     case "assistant":
-      if (state.current === "thinking" && !data.source) setState("idle", "awaiting input");
+      // Only the final reply for this turn may leave THINKING. Progress notes,
+      // reminders and other untagged assistant events must not do it.
+      if (state.current === "thinking" && data.final && !data.source) setState("idle", "awaiting input");
       state.activeStages.delete("tools");
       break;
     case "error":
@@ -325,6 +426,8 @@ function draw(now) {
 
   ctx.clearRect(0, 0, w, h);
 
+  // SIMPLIFY #3: background grid (and corner brackets below) are off by default.
+  if (!SIMPLIFY.hideGridAndBrackets) {
   // Grid behind orb: tight asymmetric grid (slants down to the left), fading toward edges
   ctx.save();
   const gridR = Math.max(w, h) * 0.62;
@@ -357,9 +460,10 @@ function draw(now) {
   const fineX = Math.max(10, Math.round(minDim / 18));
   const fineY = Math.round(fineX * 1.38);
   const fineSlant = Math.max(4, fineY * 0.42); // down to the left
-  gridPass(fineX, fineY, 0.045, fineSlant, 1);
-  gridPass(fineX * 3, fineY * 3, 0.06, fineSlant * 3, 1);
+  gridPass(fineX, fineY, 0.045 * FLAIR, fineSlant, 1);
+  gridPass(fineX * 3, fineY * 3, 0.06 * FLAIR, fineSlant * 3, 1);
   ctx.restore();
+  }
 
   // ambient field (living, softer, painterly motes)
   ctx.save();
@@ -384,10 +488,12 @@ function draw(now) {
   ctx.fillRect(0, 0, w, h);
   ctx.restore();
 
+  // SIMPLIFY #3: corner brackets / reticle marks (part of the framing layer)
+  if (!SIMPLIFY.hideGridAndBrackets) {
   // subtle minimal framing / anchor
   ctx.save();
   const frameR = Math.min(w, h) * 0.46;
-  const frameA = 0.06 + energy * 0.04;
+  const frameA = (0.06 + energy * 0.04) * FLAIR;
   ctx.strokeStyle = palette.ring;
   ctx.globalAlpha = frameA;
   ctx.lineWidth = Math.max(1, ui * 0.9);
@@ -419,7 +525,7 @@ function draw(now) {
     ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
   }
   ctx.restore();
-
+  }
 
   const glow = ctx.createRadialGradient(cx, cy, base * 0.15, cx, cy, base * 3.0);
   glow.addColorStop(0, palette.core);
@@ -539,23 +645,33 @@ function draw(now) {
   }
   ctx.restore();
 
-  // orbit rings + hologram ticks (original)
+  // SIMPLIFY #4: one faint ring (mostly while thinking) outside the orb's bright core.
   ctx.save();
   ctx.translate(cx, cy);
-  for (let i = 0; i < 2; i++) {
-    const rot = t * (0.06 + i * 0.03) * (i % 2 ? 1 : -1);
-    const rx = base * (1.72 + i * 0.3);
-    const ry = base * (1.22 + i * 0.12);
-    ctx.globalAlpha = 0.08 + energy * 0.12;
+  if (!SIMPLIFY.singleOrbitRing) {
+    for (let i = 0; i < 2; i++) {
+      const rot = t * (0.06 + i * 0.03) * (i % 2 ? 1 : -1);
+      const rx = base * (1.72 + i * 0.3);
+      const ry = base * (1.22 + i * 0.12);
+      ctx.globalAlpha = (0.08 + energy * 0.12) * FLAIR;
+      ctx.strokeStyle = palette.ring;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, rx, ry, rot, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.globalAlpha = (0.12 + energy * 0.16) * FLAIR;
+      ctx.strokeStyle = palette.core;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, rx, ry, rot, t * 0.5 + i, t * 0.5 + i + 0.8);
+      ctx.stroke();
+    }
+  } else {
+    const thinking = state.current === "thinking" || state.current === "warming";
+    ctx.globalAlpha = thinking ? 0.10 + energy * 0.04 : 0.02;
     ctx.strokeStyle = palette.ring;
     ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.ellipse(0, 0, rx, ry, rot, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.globalAlpha = 0.12 + energy * 0.16;
-    ctx.strokeStyle = palette.core;
-    ctx.beginPath();
-    ctx.ellipse(0, 0, rx, ry, rot, t * 0.5 + i, t * 0.5 + i + 0.8);
+    ctx.ellipse(0, 0, base * 1.78, base * 1.32, 0, 0, Math.PI * 2);
     ctx.stroke();
   }
 
@@ -597,19 +713,22 @@ function draw(now) {
     }
     ctx.globalCompositeOperation = "source-over";
   }
-  const tickR = base * 1.48;
-  const tickRot = t * 0.12;
-  ctx.strokeStyle = palette.accent;
-  ctx.lineWidth = 1;
-  for (let i = 0; i < 48; i++) {
-    const a = tickRot + (i / 48) * Math.PI * 2;
-    const major = i % 6 === 0;
-    const len = (major ? base * 0.06 : base * 0.03) * (1 + 0.15 * Math.sin(t * 0.8 + i));
-    ctx.globalAlpha = (major ? 0.05 : 0.025) + energy * 0.05;
-    ctx.beginPath();
-    ctx.moveTo(Math.cos(a) * tickR, Math.sin(a) * tickR * 0.74);
-    ctx.lineTo(Math.cos(a) * (tickR + len), Math.sin(a) * (tickR + len) * 0.74);
-    ctx.stroke();
+  // SIMPLIFY #4: hologram tick marks belong to the original ring layer.
+  if (!SIMPLIFY.singleOrbitRing) {
+    const tickR = base * 1.48;
+    const tickRot = t * 0.12;
+    ctx.strokeStyle = palette.accent;
+    ctx.lineWidth = 1;
+    for (let i = 0; i < 48; i++) {
+      const a = tickRot + (i / 48) * Math.PI * 2;
+      const major = i % 6 === 0;
+      const len = (major ? base * 0.06 : base * 0.03) * (1 + 0.15 * Math.sin(t * 0.8 + i));
+      ctx.globalAlpha = ((major ? 0.05 : 0.025) + energy * 0.05) * FLAIR;
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(a) * tickR, Math.sin(a) * tickR * 0.74);
+      ctx.lineTo(Math.cos(a) * (tickR + len), Math.sin(a) * (tickR + len) * 0.74);
+      ctx.stroke();
+    }
   }
 
   // organic Vessel/memory linework
@@ -658,17 +777,19 @@ function draw(now) {
   const audio = state.voiceLevel;
   const speakingBoost = (state.current === "speaking" || state.voiceActive > 0) ? 1 : 0;
 
-  // particles (prominent, toned down when speaking)
+  // SIMPLIFY #5: fewer dots, slower motion, much dimmer; original array kept intact.
+  const particleDim = SIMPLIFY.minimalParticles ? 0.35 : (0.55 + 0.45 * FLAIR);
+  const particleRate = SIMPLIFY.minimalParticles ? 0.4 : (0.7 + 0.3 * FLAIR);
   ctx.save();
   ctx.globalCompositeOperation = "lighter";
   const speakDim = speakingBoost ? 0.55 : 1.0;
-  for (const p of particles) {
-    const speed = p.speed * (1 + audio * 0.6) * (speakingBoost ? 0.85 : 1.0);
+  for (const p of particleDots) {
+    const speed = p.speed * particleRate * (1 + audio * 0.6) * (speakingBoost ? 0.85 : 1.0);
     const a = p.angle + t * speed;
     const r = base * p.radius + Math.sin(t * (1.0 + audio * 0.5) + p.phase) * base * (0.04 + audio * 0.05);
     const x = cx + Math.cos(a) * r;
     const y = cy + Math.sin(a) * r * 0.74;
-    ctx.globalAlpha = (0.14 + p.depth * 0.30 * (0.6 + energy * 0.45 + audio * 0.25)) * speakDim;
+    ctx.globalAlpha = (0.14 + p.depth * 0.30 * (0.6 + energy * 0.45 + audio * 0.25)) * speakDim * particleDim;
     ctx.fillStyle = palette.accent;
     ctx.beginPath();
     ctx.arc(x, y, p.size * (1.2 + audio * 0.35) * (speakingBoost ? 0.9 : 1.0), 0, Math.PI * 2);
@@ -676,16 +797,16 @@ function draw(now) {
   }
   ctx.restore();
 
-  // fireflies (soul/warmth)
+  // SIMPLIFY #5: same treatment for the warm firefly dots.
   ctx.save();
   ctx.globalCompositeOperation = "lighter";
-  for (const f of fireflies) {
-    const aa = f.a + t * f.s * (state.current === "thinking" ? 0.7 : state.current === "speaking" ? 1.3 : 1.0);
+  for (const f of fireflyDots) {
+    const aa = f.a + t * f.s * particleRate * (state.current === "thinking" ? 0.7 : state.current === "speaking" ? 1.3 : 1.0);
     const rr = base * f.r + Math.sin(t * 0.7 + f.bob) * base * 0.08;
     const x = cx + Math.cos(aa) * rr;
     const y = cy + Math.sin(aa) * rr * 0.74 + Math.sin(t * 0.9 + f.bob) * base * 0.03;
     const tw = 0.35 + 0.65 * Math.pow(0.5 + 0.5 * Math.sin(t * (1.2 + f.tw) + f.tw), 2);
-    const alpha = (0.06 + tw * 0.18) * (0.7 + energy * 0.5) * (speakingBoost ? 0.8 : 1.0);
+    const alpha = (0.06 + tw * 0.18) * (0.7 + energy * 0.5) * (speakingBoost ? 0.8 : 1.0) * particleDim;
     const col = f.warm > 0.55 ? palette.accent : (f.warm > 0.25 ? palette.core : "#fff6d8");
     ctx.globalAlpha = alpha;
     ctx.fillStyle = col;
@@ -1061,7 +1182,7 @@ function draw(now) {
     ctx.restore();
   }
 
-  // stage ring (original + memory) - shows where AI is currently working
+  // smart module nodes: curved traces from the orb to live status chips
   const stages = [
     { key: "input", label: "Input" },
     { key: "route", label: "Route" },
@@ -1072,97 +1193,170 @@ function draw(now) {
     { key: "model", label: "Model" },
     { key: "voice", label: "Voice" },
   ];
-  const orbit = base * 2.12;
-  const labelFont = Math.round(11 * ui);
-  for (let i = 0; i < stages.length; i++) {
-    const st = stages[i];
-    const angle = -Math.PI / 2 + i * ((Math.PI * 2) / stages.length);
-    const x = cx + Math.cos(angle) * orbit;
-    const y = cy + Math.sin(angle) * orbit * 0.74;
-    const active = stageActive(st.key);
-    const dotR = (active ? 4.2 : 3) * ui;
+  const orbit = base * 2.2;
+  const labelFont = Math.round(10.5 * ui);
+  const valueFont = Math.max(8, Math.round(8.5 * ui));
+  const nodeCount = stages.length;
+  // SIMPLIFY #2: if several stages are active, only the newest one keeps its label.
+  const activeKeys = stages.filter((s) => stageActive(s.key)).map((s) => s.key);
+  const primaryLabelKey = state.lastActiveStage && activeKeys.includes(state.lastActiveStage.key)
+    ? state.lastActiveStage.key
+    : (activeKeys.includes("model") ? "model" : activeKeys[activeKeys.length - 1] || null);
 
-    const ix = cx + Math.cos(angle) * base * 1.15;
-    const iy = cy + Math.sin(angle) * base * 1.15 * 0.74;
+  // faint dashed bus tying the modules together
+  ctx.save();
+  ctx.setLineDash([2 * ui, 6 * ui]);
+  ctx.globalAlpha = 0.10 + energy * 0.05;
+  ctx.strokeStyle = palette.ring;
+  ctx.lineWidth = Math.max(0.8, ui);
+  ctx.beginPath();
+  ctx.ellipse(cx, cy, orbit, orbit * 0.74, 0, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+
+  for (let i = 0; i < nodeCount; i++) {
+    const st = stages[i];
+    const angle = -Math.PI / 2 + i * (Math.PI * 2 / nodeCount);
+    const dirX = Math.cos(angle);
+    const dirY = Math.sin(angle);
+    const x = cx + dirX * orbit;
+    const y = cy + dirY * orbit * 0.74;
+    const ix = cx + dirX * base * 1.18;
+    const iy = cy + dirY * base * 1.18 * 0.74;
+    const active = stageActive(st.key);
+    const value = stageValue(st.key);
+    // SIMPLIFY #2: inactive labels fade to zero; hover or double-click reveals every label.
+    const revealAll = !SIMPLIFY.activeNodeLabelOnly || state.revealAllLabels || state.pointer.inside;
+    const showLabel = revealAll || st.key === primaryLabelKey;
+    const prevAlpha = state.labelAlpha[st.key] ?? 0;
+    const labelAlpha = prevAlpha + ((showLabel ? 1 : 0) - prevAlpha) * (reduceMotion ? 1 : 0.14);
+    state.labelAlpha[st.key] = labelAlpha;
+
+    // gentle alternating bend so the traces read as circuitry, not spokes
+    const dx = x - ix;
+    const dy = y - iy;
+    const seg = Math.hypot(dx, dy) || 1;
+    const bend = (i % 2 === 0 ? 1 : -1) * base * 0.16;
+    const cxp = ix + dx * 0.5 - (dy / seg) * bend;
+    const cyp = iy + dy * 0.5 + (dx / seg) * bend;
+
     ctx.save();
-    ctx.globalAlpha = active ? 0.55 : 0.1;
+    ctx.lineCap = "round";
+    ctx.globalAlpha = active ? 0.5 + energy * 0.12 : 0.08;
     ctx.strokeStyle = active ? palette.core : palette.ring;
-    ctx.lineWidth = Math.max(1, 1.1 * ui);
+    ctx.lineWidth = Math.max(0.9, (active ? 1.4 : 1) * ui);
     ctx.beginPath();
     ctx.moveTo(ix, iy);
-    ctx.lineTo(x, y);
+    ctx.quadraticCurveTo(cxp, cyp, x, y);
     ctx.stroke();
 
     if (active) {
-      const flow = (t * (0.35 + energy * 0.25) + i * 0.17) % 1;
-      const px = ix + (x - ix) * flow;
-      const py = iy + (y - iy) * flow;
-      ctx.globalAlpha = 0.9;
+      const flow = (t * (0.28 + energy * 0.22) + i * 0.13) % 1;
+      const inv = 1 - flow;
+      const px = inv * inv * ix + 2 * inv * flow * cxp + flow * flow * x;
+      const py = inv * inv * iy + 2 * inv * flow * cyp + flow * flow * y;
+      ctx.globalAlpha = 0.95;
       ctx.fillStyle = palette.accent;
       ctx.beginPath();
-      ctx.arc(px, py, 2.2 * ui, 0, Math.PI * 2);
+      ctx.arc(px, py, 2 * ui, 0, Math.PI * 2);
       ctx.fill();
 
-      const g = ctx.createRadialGradient(x, y, 0, x, y, 18 * ui);
+      const g = ctx.createRadialGradient(x, y, 0, x, y, 20 * ui);
       g.addColorStop(0, palette.glow);
       g.addColorStop(1, "rgba(0,0,0,0)");
+      ctx.globalAlpha = 0.9;
       ctx.fillStyle = g;
       ctx.beginPath();
-      ctx.arc(x, y, 18 * ui, 0, Math.PI * 2);
+      ctx.arc(x, y, 20 * ui, 0, Math.PI * 2);
       ctx.fill();
     }
 
-    ctx.globalAlpha = active ? 0.98 : 0.4;
-    ctx.fillStyle = active ? palette.core : "rgba(130,175,195,0.55)";
+    const dotR = (active ? 4.4 : 2.8) * ui;
+    ctx.globalAlpha = active ? 1 : 0.45;
+    ctx.fillStyle = active ? palette.core : "rgba(130,175,195,0.6)";
     ctx.beginPath();
     ctx.arc(x, y, dotR, 0, Math.PI * 2);
     ctx.fill();
+    if (active) {
+      ctx.globalAlpha = 0.9;
+      ctx.fillStyle = "#ffffff";
+      ctx.beginPath();
+      ctx.arc(x, y, Math.max(1, 1.5 * ui), 0, Math.PI * 2);
+      ctx.fill();
+    }
 
-    const lx = cx + Math.cos(angle) * (orbit + 16 * ui);
-    const ly = cy + Math.sin(angle) * (orbit * 0.74 + 16 * ui);
-    ctx.textAlign = Math.abs(Math.cos(angle)) < 0.2 ? "center" : (Math.cos(angle) > 0 ? "left" : "right");
-    ctx.textBaseline = "middle";
-    ctx.fillStyle = active ? palette.core : "rgba(150,195,210,0.5)";
-    ctx.font = `${active ? 600 : 500} ${labelFont}px Inter, "Segoe UI", system-ui, sans-serif`;
-    ctx.fillText(st.label, lx, ly);
-
-    // dynamic skill branches
+    // skill branches fan sideways so they don't sit under the status chip
     if (st.key === "skill" && state.knownSkills.length) {
       const dir = Math.cos(angle) >= 0 ? 1 : -1;
-      const baseAng = angle + (dir * 0.18);
-      const spread = 0.22;
+      const baseAng = angle - dir * 0.65;
       const list = state.knownSkills.slice(0, 5);
       for (let j = 0; j < list.length; j++) {
         const name = list[j];
         const isActive = active && state.activeSkill === name;
-        const a2 = baseAng + (j - (list.length - 1) / 2) * spread * 0.55 * (dir || 1);
-        const len = (26 + j * 10) * ui;
+        const a2 = baseAng + (j - (list.length - 1) / 2) * 0.16 * dir;
+        const len = (20 + j * 8) * ui;
         const sx = x + Math.cos(a2) * len;
         const sy = y + Math.sin(a2) * len * 0.9;
-        ctx.globalAlpha = isActive ? 0.55 : 0.18;
+        ctx.globalAlpha = isActive ? 0.55 : 0.16;
         ctx.strokeStyle = isActive ? palette.core : palette.ring;
         ctx.lineWidth = 1;
         ctx.beginPath();
         ctx.moveTo(x, y);
-        ctx.quadraticCurveTo(x + Math.cos(a2) * len * 0.45, y + Math.sin(a2) * len * 0.45, sx, sy);
+        ctx.quadraticCurveTo(x + Math.cos(a2) * len * 0.5, y + Math.sin(a2) * len * 0.45, sx, sy);
         ctx.stroke();
-        ctx.globalAlpha = isActive ? 0.95 : 0.35;
+        ctx.globalAlpha = isActive ? 0.95 : 0.32;
         ctx.fillStyle = isActive ? palette.accent : "rgba(150,195,210,0.55)";
         ctx.beginPath();
         ctx.arc(sx, sy, isActive ? 2.6 * ui : 1.8 * ui, 0, Math.PI * 2);
         ctx.fill();
         if (isActive || (active && j === 0)) {
-          const tx = sx + dir * 6 * ui;
-          const ty = sy - 2 * ui;
+          const bx = sx + dir * 6 * ui;
+          const by = sy - 2 * ui;
           ctx.font = `${isActive ? 500 : 400} ${Math.max(8, labelFont - 2)}px Inter, "Segoe UI", system-ui, sans-serif`;
           ctx.textAlign = dir > 0 ? "left" : "right";
-          ctx.globalAlpha = isActive ? 0.9 : 0.45;
+          ctx.globalAlpha = isActive ? 0.9 : 0.42;
           ctx.fillStyle = isActive ? palette.accent : "rgba(170,210,225,0.6)";
           const txt = name.length > 18 ? name.slice(0, 17) + "…" : name;
-          ctx.fillText(txt, tx, ty);
+          ctx.fillText(txt, bx, by);
         }
       }
     }
+
+    // SIMPLIFY #2: compact status chip, drawn only while its fade alpha is visible.
+    if (labelAlpha > 0.02) {
+      ctx.font = `600 ${labelFont}px Inter, "Segoe UI", system-ui, sans-serif`;
+      const wLabel = ctx.measureText(st.label).width;
+      ctx.font = `400 ${valueFont}px Inter, "Segoe UI", system-ui, sans-serif`;
+      const wValue = ctx.measureText(value).width;
+      const pw = Math.max(wLabel, wValue) + 14 * ui;
+      const ph = 28 * ui;
+      const align = Math.abs(dirX) < 0.25 ? "center" : (dirX > 0 ? "left" : "right");
+      const lx = x + dirX * 13 * ui;
+      const ly = y + dirY * 13 * ui;
+      const px = align === "center" ? lx - pw / 2 : align === "left" ? lx - 3 * ui : lx - pw + 3 * ui;
+      const py = ly - ph / 2;
+      roundedRect(px, py, pw, ph, 5 * ui);
+      ctx.globalAlpha = (active ? 0.82 : 0.38) * labelAlpha;
+      ctx.fillStyle = active ? "rgba(10,20,24,0.88)" : "rgba(10,18,22,0.55)";
+      ctx.fill();
+      ctx.globalAlpha = (active ? 0.45 : 0.12) * labelAlpha;
+      ctx.strokeStyle = active ? palette.core : palette.ring;
+      ctx.lineWidth = Math.max(0.8, ui);
+      ctx.stroke();
+
+      const tx = align === "center" ? lx : align === "left" ? px + 7 * ui : px + pw - 7 * ui;
+      ctx.textAlign = align;
+      ctx.textBaseline = "middle";
+      ctx.globalAlpha = (active ? 1 : 0.55) * labelAlpha;
+      ctx.fillStyle = active ? palette.core : "rgba(150,195,210,0.6)";
+      ctx.font = `600 ${labelFont}px Inter, "Segoe UI", system-ui, sans-serif`;
+      ctx.fillText(st.label, tx, ly - 6 * ui);
+      ctx.globalAlpha = (active ? 0.85 : 0.4) * labelAlpha;
+      ctx.fillStyle = active ? palette.accent : "rgba(150,195,210,0.5)";
+      ctx.font = `400 ${valueFont}px Inter, "Segoe UI", system-ui, sans-serif`;
+      ctx.fillText(value, tx, ly + 6 * ui);
+    }
+
     ctx.restore();
   }
 
@@ -1175,8 +1369,11 @@ function connect() {
     setState("error", "EventSource not supported");
     return;
   }
-  const source = new EventSource("/events");
-  source.onopen = () => { resetView(); setLink(true); loadUploads(); loadKnowledge(); };
+  const source = new EventSource(adaServiceUrl("/events"));
+  // Do NOT reset the view on reconnect: a dropped SSE connection during a long
+  // task would otherwise flip the orb back to IDLE. resetView() is called once
+  // at startup below.
+  source.onopen = () => { setLink(true); loadUploads(); loadKnowledge(); };
   source.onmessage = (msg) => {
     try { handleEvent(JSON.parse(msg.data)); } catch (_) { }
   };
@@ -1185,7 +1382,7 @@ function connect() {
 
 async function loadKnowledge() {
   try {
-    const res = await fetch("/api/knowledge", { cache: "no-store" });
+    const res = await fetch(adaServiceUrl("/api/knowledge"), { cache: "no-store" });
     if (!res.ok) return;
     const data = await res.json();
     state.knowledge.memories = Number(data.memories || 0);
@@ -1197,7 +1394,7 @@ async function loadKnowledge() {
 async function loadUploads() {
   if (!els.uploadList) return;
   try {
-    const res = await fetch("/api/uploads", { cache: "no-store" });
+    const res = await fetch(adaServiceUrl("/api/uploads"), { cache: "no-store" });
     if (!res.ok) throw new Error("HTTP " + res.status);
     const data = await res.json();
     const items = Array.isArray(data.uploads) ? data.uploads : [];
@@ -1239,7 +1436,7 @@ async function uploadSelectedFiles() {
     try {
       if (els.uploadStatus) els.uploadStatus.textContent = `Uploading ${file.name}…`;
       const data = await readFileAsBase64(file);
-      const res = await fetch("/api/upload", {
+      const res = await fetch(adaServiceUrl("/api/upload"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: file.name, data })
@@ -1275,6 +1472,24 @@ function setupUploads() {
 
 if (window.ResizeObserver && els.canvas) new ResizeObserver(resizeCanvas).observe(els.canvas);
 window.addEventListener("resize", resizeCanvas);
+
+// SIMPLIFY #2: hover reveals all node labels; double-click keeps them revealed.
+if (els.canvas) {
+  els.canvas.addEventListener("mousemove", (event) => {
+    const rect = els.canvas.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+    state.pointer.x = x;
+    state.pointer.y = y;
+    // Only the outer node band counts as "hovering the labels", not the whole canvas.
+    const minDim = Math.min(rect.width, rect.height);
+    const base = Math.max(50, minDim * (minDim < 420 ? 0.155 : 0.18));
+    const distance = Math.hypot(x - rect.width / 2, (y - rect.height * 0.43) / 0.74);
+    state.pointer.inside = distance > base * 1.45 && distance < base * 2.9;
+  });
+  els.canvas.addEventListener("mouseleave", () => { state.pointer.inside = false; });
+  els.canvas.addEventListener("dblclick", () => { state.revealAllLabels = !state.revealAllLabels; });
+}
 function applyDisplayMode() {
   const params = new URLSearchParams(window.location.search);
   const bg = (params.get("bg") || "").toLowerCase();
@@ -1289,8 +1504,10 @@ function applyDisplayMode() {
 applyDisplayMode();
 resizeCanvas();
 resetView();
-setupUploads();
-loadUploads();
-loadKnowledge();
 requestAnimationFrame(draw);
-connect();
+if (!cloudOrbOnly) {
+  setupUploads();
+  loadUploads();
+  loadKnowledge();
+  connect();
+}
