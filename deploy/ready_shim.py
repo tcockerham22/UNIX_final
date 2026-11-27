@@ -11,7 +11,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlsplit
 
 OLLAMA_URL = os.environ.get("OLLAMA_UPSTREAM", "http://ollama:11434")
-MODEL = os.environ.get("ADA_CLOUD_MODEL", "qwen3.5:4b")
+MODEL = os.environ.get("ADA_CLOUD_MODEL", "qwen2.5:3b")
 POLL_SECONDS = 20
 READINESS_SECONDS = 30
 PROBE_TIMEOUT = 30

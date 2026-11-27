@@ -144,7 +144,7 @@ class Config:
     auto_tools: bool = False
     keep_alive: str = "10m"
     # Cloud services override these connection values through environment variables.
-    cloud_model: str = "qwen3.5:4b"
+    cloud_model: str = "qwen2.5:3b"
     ollama_host: str = "http://127.0.0.1:11434"
     database_url: str | None = None
     num_ctx: int = 4096
