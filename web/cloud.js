@@ -148,8 +148,11 @@ function setView(view) {
   window.clearInterval(metricsTimer);
   metricsTimer = null;
   if (showMetrics) {
+    metricsView.scrollTop = 0;
     loadMetrics();
     metricsTimer = window.setInterval(loadMetrics, 15000);
+  } else {
+    scrollToBottom();
   }
 }
 
