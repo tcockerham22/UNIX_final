@@ -8,6 +8,7 @@ services:
       OLLAMA_MODELS: /models
       OLLAMA_NUM_PARALLEL: "1"
       OLLAMA_KEEP_ALIVE: "-1"
+      OLLAMA_MAX_LOADED_MODELS: "1"
     volumes:
       - ${ADA_MODELS_PATH:-/models}:/models:ro
     networks:
@@ -17,7 +18,7 @@ services:
       resources:
         limits:
           cpus: "2.00"
-          memory: 5G
+          memory: 8G
 
   ollama-b:
     image: ollama/ollama:0.40.18
@@ -26,6 +27,7 @@ services:
       OLLAMA_MODELS: /models
       OLLAMA_NUM_PARALLEL: "1"
       OLLAMA_KEEP_ALIVE: "-1"
+      OLLAMA_MAX_LOADED_MODELS: "1"
     volumes:
       - ${ADA_MODELS_PATH:-/models}:/models:ro
     networks:
@@ -35,7 +37,7 @@ services:
       resources:
         limits:
           cpus: "2.00"
-          memory: 5G
+          memory: 8G
 
   ready-shim-a:
     build:
