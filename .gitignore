@@ -8,6 +8,7 @@ __pycache__/
 *.tfstate.*
 *.tfvars
 *.tfvars.json
+!terraform/terraform.tfvars.example
 *.pem
 *.key
 

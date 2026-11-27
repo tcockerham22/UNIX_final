@@ -13,12 +13,13 @@ deployed with one command.
 | _name_ | Application deployment (web tier, load balancer, autoscaling, rate limiting) |
 | Connor | AI platform (model, inference replicas, embeddings, AI tests) |
 
-More detail in [docs/roles.md](docs/roles.md).
+More detail in [docs/roles.md](docs/roles.md). Frank helped with the Phase 6
+Terraform code.
 
 ## Layout
 
-- `terraform/` - infrastructure code
-- `compose/` - Docker Compose files
+- `terraform/` - Phase 6 infrastructure code
+- `deploy/` - Docker Compose and load balancer files
 - `scripts/` - LVM, snapshot, ingestion and deploy scripts
 - `db/` - database schema
 - `data/docs/` - documents the RAG app searches
@@ -28,5 +29,10 @@ More detail in [docs/roles.md](docs/roles.md).
 ## Secrets
 
 Nothing secret is committed. Passwords come from Secret Manager at deploy
-time and `.env` files are ignored by Git. `compose/.env.example` only lists
-the variable names.
+time and `.env` files are ignored by Git. `terraform/terraform.tfvars.example`
+contains only non-secret infrastructure settings.
+
+## Deploy
+
+See [terraform/README.md](terraform/README.md) for the Phase 6 apply sequence
+and [docs/startup.md](docs/startup.md) for the VM boot behavior.

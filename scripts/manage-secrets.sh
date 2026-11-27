@@ -3,6 +3,7 @@
 #
 #   ./scripts/manage-secrets.sh get NAME                 print the latest value
 #   ./scripts/manage-secrets.sh ensure NAME [VALUE]      create a secret once
+#   ./scripts/manage-secrets.sh seed NAME                add a version if none exists
 #   ./scripts/manage-secrets.sh grant NAME MEMBER
 #
 # `ensure` is an operator/setup step: it needs an account that can enable the
@@ -44,6 +45,14 @@ ensure_api() {
     die "the API was enabled but has not propagated yet; wait a minute and retry"
 }
 
+random_value() {
+    if command -v openssl >/dev/null 2>&1; then
+        openssl rand -hex 24
+    else
+        tr -dc 'A-Za-z0-9' </dev/urandom | head -c 32
+    fi
+}
+
 ensure_api
 
 cmd="${1:-}"
@@ -65,17 +74,32 @@ case "$cmd" in
         fi
         value="${SECRET_VALUE:-${3:-}}"
         if [[ -z "$value" ]]; then
-            if command -v openssl >/dev/null 2>&1; then
-                value="$(openssl rand -hex 24)"
-            else
-                value="$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c 32)"
-            fi
+            value="$(random_value)"
             log "generated a random value for '$name'"
         fi
         printf '%s' "$value" | gcloud secrets create "$name" \
             --project="$PROJECT_ID" --data-file=- \
             --replication-policy=automatic --quiet
         log "created secret '$name'"
+        ;;
+    seed)
+        name="${2:-}"
+        [[ -n "$name" ]] || die "usage: seed NAME"
+        gcloud secrets describe "$name" --project="$PROJECT_ID" >/dev/null 2>&1 \
+            || die "secret '$name' does not exist; run 'ensure $name' or apply Terraform first"
+        if gcloud secrets versions list "$name" --project="$PROJECT_ID" \
+            --format='value(name)' 2>/dev/null | grep -q .; then
+            log "secret '$name' already has a version; leaving it unchanged"
+            exit 0
+        fi
+        value="${SECRET_VALUE:-}"
+        if [[ -z "$value" ]]; then
+            value="$(random_value)"
+            log "generated a random value for '$name'"
+        fi
+        printf '%s' "$value" | gcloud secrets versions add "$name" \
+            --project="$PROJECT_ID" --data-file=- --quiet
+        log "seeded secret '$name'"
         ;;
     grant)
         name="${2:-}"

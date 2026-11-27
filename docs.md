@@ -23,8 +23,8 @@ is being developed as a separate profile for a university sysadmin project:
 
 Work was initially requested in phases with approval between phases. The owner
 has since asked to proceed through phases 2, 3, and 4 together, and Phase 5 has
-now been added. The status below reflects that scope. Phases 6–9 have not been
-implemented.
+now been added. The status below reflects that scope. Phase 6 Terraform code
+has been added; Phases 7–9 have not been implemented.
 
 ## Current status
 
@@ -33,10 +33,10 @@ implemented.
 | 0 | Audit the existing local application and plan the conversion | Completed earlier |
 | 1 | Cloud profile, PostgreSQL state, cloud chat page, health endpoint | Implemented earlier; locally tested |
 | 2 | Corpus, chunking, Ollama embeddings, pgvector retrieval, cited streaming chat | Implemented in this work |
-| 3 | Web, database, inference, readiness shim, and monitoring containers | Compose and Docker definitions added; not built or deployed |
-| 4 | HAProxy, rate limiting, Prometheus exporter, web autoscaler | Configurations and service added; not run against live infrastructure |
-| 5 | LVM, startup scripts, Secret Manager retrieval, snapshots | Implemented in this work; not run on GCP |
-| 6 | Terraform network, firewalls, VMs, disks, service account, secrets | Not implemented |
+| 3 | Web, database, inference, readiness shim, and monitoring containers | Implemented and deployed manually |
+| 4 | HAProxy, rate limiting, Prometheus exporter, web autoscaler | Implemented and running on the edge VM |
+| 5 | LVM, startup scripts, Secret Manager retrieval, snapshots | Implemented and running; Terraform apply pending |
+| 6 | Terraform network, firewalls, VMs, disks, service account, secrets | Terraform code added; apply pending |
 | 7 | Application metrics, alert rules, production Grafana dashboards | Partial infrastructure only; not complete |
 | 8 | Smoke, load, failover, and rate-limit test harness | Not implemented |
 | 9 | Demo, full deployment guide, memory worksheet, citations | Not implemented; this file is a status/engineering guide, not the final assignment README |
@@ -287,13 +287,22 @@ Those changes have been preserved. No GitHub push has been made, and no
 commit has been created because staging shared dirty files would risk bundling
 unrelated work.
 
+## Phase 6 Terraform
+
+`terraform/` now declares the dedicated VPC and subnet, Cloud NAT, public HTTP
+and IAP SSH firewalls, two VMs with LVM-ready data disks, a least-privilege
+service account, Secret Manager secrets and access grants, and startup-script
+metadata. `terraform/terraform.tfvars.example` is safe to commit; real passwords
+are generated into Secret Manager and never written into tracked files. Frank
+helped with this Phase 6 code.
+
+The configuration has not been applied yet. The existing manual deployment
+still uses the default VPC and the default compute service account, so a
+Terraform apply creates a parallel stack with the `-tf` names in the example
+tfvars. See [terraform/README.md](terraform/README.md) for import notes and the
+apply sequence.
+
 ## Remaining phases
-
-### Phase 6: Terraform
-
-Still needed: VPC/subnet, firewalls, two VMs and attached disks, restricted
-IAP/restricted-IP SSH access, least-privilege service account, Secret Manager,
-startup-script metadata, variables, and a safe example tfvars file.
 
 ### Phase 7: observability
 

@@ -1,0 +1,36 @@
+# Copy to terraform.tfvars and adjust. This file contains no secrets.
+project_id = "ubuntu-server-506716"
+region     = "us-east1"
+zone       = "us-east1-b"
+
+network_name     = "ada-vpc"
+subnetwork_name  = "ada-subnet"
+subnet_cidr      = "10.10.0.0/24"
+static_ip_name   = "ada-edge-ip-tf"
+router_name      = "ada-nat-router"
+nat_name         = "ada-nat"
+
+edge_instance_name = "ada-edge-tf"
+ai_instance_name   = "ada-ai-tf"
+edge_tag           = "ada-edge"
+ai_tag             = "ada-ai"
+
+edge_machine_type = "e2-standard-4"
+ai_machine_type   = "n2-standard-8"
+source_image      = "ubuntu-os-cloud/ubuntu-2404-lts-amd64"
+
+service_account_id        = "ada-vm"
+grant_logging_and_metrics = true
+operator_members          = []
+
+# Keep the IAP source range. Add your office IP only if you also want
+# direct SSH to the private IPs from that network.
+ssh_source_ranges = ["35.235.240.0/20"]
+
+repo_url           = "https://github.com/tcockerham22/UNIX_final.git"
+repo_ref           = "main"
+pull_repo_on_boot  = true
+deletion_protection = false
+
+# Leave db_password and grafana_admin_password unset to let Terraform generate
+# random values and store them only in Secret Manager and the gitignored state.

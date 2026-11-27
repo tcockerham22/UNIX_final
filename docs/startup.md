@@ -2,7 +2,7 @@
 
 These scripts make a VM boot into a working Ada tier without manual steps, and
 make a second boot change nothing. They are designed to be called from the
-GCP startup-script metadata that Phase 6 will create.
+GCP startup-script metadata created by the Phase 6 Terraform configuration.
 
 ## Roles
 
@@ -74,7 +74,7 @@ gcloud iam service-accounts list --project=YOUR_PROJECT_ID
 ```
 
 The default compute service account is only suitable for a test project; the
-Terraform phase should create a dedicated `ada-vm` service account.
+Terraform configuration creates a dedicated `ada-vm` service account.
 
 `ensure` generates a random hex password when no value is supplied. To choose
 one explicitly, set `SECRET_VALUE` in the environment rather than on the
