@@ -20,6 +20,8 @@ const maxUploadBytes = 25 * 1024 * 1024;
 const sameOriginFetch = { credentials: "same-origin" };
 let orbState = "idle";
 let orbDetail = "ready when you are";
+let orbKnowledge = { memories: 0, skills: 0, uploads: 0, sources: 0, connections: 0 };
+let orbLearningTimer = null;
 
 function scrollToBottom() {
   conversation.scrollTop = conversation.scrollHeight;
@@ -44,18 +46,60 @@ function autoResizeTextarea() {
   messageInput.style.height = `${Math.min(messageInput.scrollHeight, 160)}px`;
 }
 
-function setOrbState(state, detail) {
+function setOrbState(state, detail, extra = {}) {
   orbState = state;
   orbDetail = detail;
+  if (extra.knowledge) orbKnowledge = { ...orbKnowledge, ...extra.knowledge };
   if (orbFrame.contentWindow) {
     orbFrame.contentWindow.postMessage(
-      { type: "ada-cloud-orb-state", state, detail },
+      {
+        type: "ada-cloud-orb-state",
+        state,
+        detail,
+        knowledge: orbKnowledge,
+        learning: extra.learning || null,
+      },
       window.location.origin,
     );
   }
 }
 
 orbFrame.addEventListener("load", () => setOrbState(orbState, orbDetail));
+
+async function syncOrbKnowledge() {
+  try {
+    const response = await fetch("/api/knowledge", {
+      ...sameOriginFetch,
+      cache: "no-store",
+    });
+    if (!response.ok) return false;
+    const data = await readJsonResponse(response);
+    const next = {
+      memories: Number(data.memories || 0),
+      skills: Number(data.skills || 0),
+      uploads: Number(data.uploads || 0),
+      sources: Number(data.sources || 0),
+      connections: Number(data.connections || 0),
+    };
+    const learned = Math.max(0, next.connections - orbKnowledge.connections);
+    orbKnowledge = next;
+    if (learned > 0) {
+      setOrbState("learning", `${next.connections} connection${next.connections === 1 ? "" : "s"} learned`, {
+        knowledge: next,
+        learning: { new_connections: learned },
+      });
+      window.clearTimeout(orbLearningTimer);
+      orbLearningTimer = window.setTimeout(() => {
+        if (!sendButton.disabled) setOrbState("idle", "ready when you are");
+      }, 1800);
+      return true;
+    }
+    setOrbState(orbState, orbDetail, { knowledge: next });
+  } catch (_) {
+    // The orb keeps its last known state if the knowledge snapshot is unavailable.
+  }
+  return false;
+}
 
 function addMessage(role, text, sources = []) {
   const article = document.createElement("article");
@@ -293,6 +337,7 @@ async function uploadSelectedFiles() {
       if (result.file?.readable) readableUploads += 1;
     }
     await loadUploads();
+    await syncOrbKnowledge();
     uploadStatus.textContent = readableUploads === uploaded
       ? `Saved ${uploaded} file${uploaded === 1 ? "" : "s"}; text is ready for Ada to reference.`
       : `Saved ${uploaded} file${uploaded === 1 ? "" : "s"}. Ada cannot read the contents of some file types yet.`;
@@ -350,6 +395,7 @@ async function loadHistory() {
     setServiceState("Ready", "ready");
     setOrbState("idle", "ready when you are");
     await loadUploads();
+    await syncOrbKnowledge();
   } catch (error) {
     setServiceState("Unavailable", "error");
     notice.textContent = error.message;
@@ -392,7 +438,8 @@ composer.addEventListener("submit", async (event) => {
       finishThinking(thinking);
       addMessage("assistant", result.answer, result.sources || []);
       setServiceState("Ready", "ready");
-      setOrbState("speaking", "reply complete");
+      const learned = await syncOrbKnowledge();
+      if (!learned) setOrbState("speaking", "reply complete");
       return;
     }
     if (!response.body) {
@@ -451,10 +498,13 @@ composer.addEventListener("submit", async (event) => {
       }
     }
     setServiceState("Ready", "ready");
-    setOrbState("speaking", "reply complete");
-    window.setTimeout(() => {
-      if (!sendButton.disabled) setOrbState("idle", "ready when you are");
-    }, 1400);
+    const learned = await syncOrbKnowledge();
+    if (!learned) {
+      setOrbState("speaking", "reply complete");
+      window.setTimeout(() => {
+        if (!sendButton.disabled) setOrbState("idle", "ready when you are");
+      }, 1400);
+    }
   } catch (error) {
     finishThinking(thinking, true);
     const messageText = error?.name === "AbortError"

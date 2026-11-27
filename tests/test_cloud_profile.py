@@ -9,7 +9,7 @@ import tempfile
 import threading
 import unittest
 from pathlib import Path
-from unittest.mock import ANY, patch
+from unittest.mock import ANY, MagicMock, patch
 
 from ada import tools
 from ada.config import Config
@@ -80,6 +80,35 @@ class CloudProfileTests(unittest.TestCase):
         names = {tool["function"]["name"] for tool in tools.available_tools(config)}
         self.assertEqual(names, {"current_time", "remember", "forget", "list_memories"})
         self.assertIn("disabled", tools.run_tool("run_command", {}, None, config))
+
+
+class CloudStateTests(unittest.TestCase):
+    def test_session_knowledge_counts_memories_uploads_and_unique_sources(self):
+        from ada.cloud_state import PostgresState
+
+        state = PostgresState("postgresql://db/ada")
+        connection = MagicMock()
+        connection.execute.return_value.fetchone.return_value = (2, 1, 3)
+        context = MagicMock()
+        context.__enter__.return_value = connection
+        context.__exit__.return_value = False
+
+        with patch.object(state, "_connection", return_value=context):
+            snapshot = state.session_knowledge("session-1")
+
+        self.assertEqual(
+            snapshot,
+            {
+                "memories": 2,
+                "skills": 0,
+                "uploads": 1,
+                "sources": 3,
+                "connections": 6,
+            },
+        )
+        query, params = connection.execute.call_args.args
+        self.assertIn("jsonb_array_elements(m.sources)", query)
+        self.assertEqual(params, ("session-1", "session-1", "session-1"))
 
 
 class CloudWebTests(unittest.TestCase):
@@ -175,6 +204,26 @@ class CloudWebTests(unittest.TestCase):
         second_session = get_history.call_args_list[1].args[0]
         self.assertEqual(first_session, second_session)
         self.assertEqual(get_history.call_args_list[0].kwargs, {"limit": 1000})
+
+    def test_knowledge_endpoint_reuses_the_browser_session_cookie(self):
+        with patch(
+            "ada.web.knowledge_snapshot",
+            return_value={"memories": 1, "skills": 0, "uploads": 1, "sources": 2, "connections": 4},
+        ) as snapshot:
+            first_status, first_headers, first_result = self.request("GET", "/api/knowledge")
+            cookie = first_headers["Set-Cookie"].split(";", 1)[0]
+            second_status, _second_headers, second_result = self.request(
+                "GET", "/api/knowledge", headers={"Cookie": cookie}
+            )
+
+        self.assertEqual(first_status, 200)
+        self.assertEqual(second_status, 200)
+        self.assertEqual(first_result, second_result)
+        self.assertEqual(first_result["connections"], 4)
+        self.assertEqual(snapshot.call_count, 2)
+        first_session = snapshot.call_args_list[0].args[0]
+        second_session = snapshot.call_args_list[1].args[0]
+        self.assertEqual(first_session, second_session)
 
     def test_local_root_keeps_serving_the_existing_dashboard(self):
         config = Config(web_host="127.0.0.1", web_port=0)

@@ -83,6 +83,17 @@ class Phase5ScriptTests(unittest.TestCase):
         self.assertIn("num_ctx: int = 8192", config)
         self.assertIn("light_max_tokens: int = 4096", config)
 
+    def test_orb_learning_signal_is_wired_through_the_cloud_ui(self):
+        cloud_js = (ROOT / "web" / "cloud.js").read_text(encoding="utf-8")
+        app_js = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
+        web_py = (ROOT / "ada" / "web.py").read_text(encoding="utf-8")
+        self.assertIn("async function syncOrbKnowledge()", cloud_js)
+        self.assertIn("learning: extra.learning || null", cloud_js)
+        self.assertIn("message.learning?.new_connections", app_js)
+        self.assertIn("function knowledgeBand(kind)", app_js)
+        self.assertIn('state.current === "learning"', app_js)
+        self.assertIn("knowledge_snapshot(session_id)", web_py)
+
     def test_haproxy_dockerfile_uses_repo_relative_copy_paths(self):
         dockerfile = (ROOT / "deploy" / "haproxy" / "Dockerfile").read_text(encoding="utf-8")
         self.assertIn("COPY deploy/haproxy/haproxy.cfg.template", dockerfile)

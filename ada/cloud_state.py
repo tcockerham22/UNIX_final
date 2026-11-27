@@ -285,6 +285,35 @@ class PostgresState:
             for filename, content_type, size_bytes, created_at, is_readable in rows
         ]
 
+    def session_knowledge(self, session_id: str) -> dict:
+        """Count what this chat session has learned for the orb display."""
+        with self._connection() as connection:
+            row = connection.execute(
+                """
+                SELECT
+                    (SELECT count(*) FROM ada_memories WHERE session_id = %s) AS memories,
+                    (SELECT count(*) FROM ada_uploads
+                     WHERE session_id = %s AND extracted_text <> '') AS uploads,
+                    (SELECT count(DISTINCT value->>'source')
+                     FROM ada_chat_messages AS m,
+                          jsonb_array_elements(m.sources) AS elem(value)
+                     WHERE m.session_id = %s
+                       AND m.role = 'assistant'
+                       AND jsonb_typeof(value) = 'object'
+                       AND value->>'source' IS NOT NULL
+                       AND value->>'source' <> '') AS sources
+                """,
+                (session_id, session_id, session_id),
+            ).fetchone()
+        memories, uploads, sources = int(row[0]), int(row[1]), int(row[2])
+        return {
+            "memories": memories,
+            "skills": 0,
+            "uploads": uploads,
+            "sources": sources,
+            "connections": memories + uploads + sources,
+        }
+
 
 class PostgresMemory:
     """Implement Ada's existing memory interface on top of PostgreSQL."""

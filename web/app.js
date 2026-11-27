@@ -44,6 +44,7 @@ const STATE_LABELS = {
   listening: "LISTENING",
   transcribing: "TRANSCRIBING",
   thinking: "THINKING",
+  learning: "LEARNING",
   speaking: "SPEAKING",
   warming: "WARMING",
   error: "FAULT",
@@ -55,6 +56,7 @@ const PALETTES = {
   listening: { core: "#7ff5d8", glow: "rgba(110,235,200,0.10)", ring: "rgba(127,245,216,0.44)", accent: "#f2fff9" },
   transcribing: { core: "#7ff5d8", glow: "rgba(110, 235, 200, 0.10)", ring: "rgba(127,245,216,0.44)", accent: "#f2fff9" },
   thinking: { core: "#ffc86a", glow: "rgba(255,185,90,0.10)", ring: "rgba(255,200,106,0.44)", accent: "#fff4de" },
+  learning: { core: "#7ff5d8", glow: "rgba(110,235,200,0.12)", ring: "rgba(127,245,216,0.48)", accent: "#f2fff9" },
   speaking: { core: "#c79bff", glow: "rgba(185, 140, 255, 0.10)", ring: "rgba(199,155,255,0.46)", accent: "#f7efff" },
   warming: { core: "#ffd59a", glow: "rgba(245,190,120,0.10)", ring: "rgba(255,213,154,0.40)", accent: "#fff6e8" },
   error: { core: "#ff8f87", glow: "rgba(255,120,110,0.10)", ring: "rgba(255,143,135,0.44)", accent: "#ffeceb" },
@@ -79,7 +81,7 @@ const state = {
   inputMode: "text",
   voiceName: "",
   tiers: { light: "—", moderate: "—", deep: "—" },
-  knowledge: { memories: 0, skills: 0, uploads: 0 },
+  knowledge: { memories: 0, skills: 0, uploads: 0, sources: 0, connections: 0 },
   ripples: [],
   lastRippleAt: 0,
   lastEventId: 0,   // ignore replayed events after an SSE reconnect
@@ -155,7 +157,7 @@ function stageActive(stage) {
   if (stage === "tools") return state.activeStages.has("tools");
   if (stage === "route") return state.activeStages.has("route");
   if (stage === "skill") return state.activeStages.has("skill");
-  if (stage === "memory") return state.activeStages.has("memory");
+  if (stage === "memory") return state.activeStages.has("memory") || state.current === "learning";
   if (stage === "agents") return state.activeStages.has("agents");
   return false;
 }
@@ -191,6 +193,23 @@ function stageValue(key) {
       : state.voiceName ? shortModel(state.voiceName) : "—";
     default: return "";
   }
+}
+
+function knowledgeKind(index, k) {
+  const skills = Number(k.skills || 0);
+  const memories = Number(k.memories || 0);
+  const uploads = Number(k.uploads || 0);
+  if (index < skills) return "skill";
+  if (index < skills + memories) return "memory";
+  if (index < skills + memories + uploads) return "upload";
+  return "source";
+}
+
+function knowledgeBand(kind) {
+  if (kind === "skill") return 2.02;
+  if (kind === "memory") return 2.28;
+  if (kind === "upload") return 2.52;
+  return 2.72;
 }
 
 function shortModel(m) {
@@ -233,6 +252,7 @@ function setState(name, detail) {
   if (prev !== next) {
     if (next === "listening" || next === "transcribing") spawnRipple("hear", 0.9);
     else if (next === "thinking" || next === "warming") spawnRipple("think", 1.0);
+    else if (next === "learning") spawnRipple("learn", 1.2);
     else if (next === "speaking") spawnRipple("voice", 1.05);
     else if (next === "error") spawnRipple("error", 0.8);
   }
@@ -243,6 +263,14 @@ window.addEventListener("message", (event) => {
   if (!cloudOrbOnly || event.origin !== location.origin || event.source !== window.parent) return;
   const message = event.data;
   if (!message || message.type !== "ada-cloud-orb-state") return;
+  if (message.knowledge) {
+    state.knowledge = { ...state.knowledge, ...message.knowledge };
+    const learned = Number(message.learning?.new_connections || 0);
+    if (learned > 0) {
+      activateStage("memory", 3500);
+      spawnRipple("learn", Math.min(1.4, 0.85 + learned * 0.15));
+    }
+  }
   setState(message.state, message.detail);
 });
 
@@ -676,13 +704,14 @@ function draw(now) {
   }
 
   // memory/knowledge presence: faint orbiting fragments/constellations
-  const k = state.knowledge || { memories: 0, skills: 0, uploads: 0 };
-  const kCount = Math.min(24, Math.max(0, (k.skills || 0) + (k.memories || 0) + (k.uploads || 0)));
+  const k = state.knowledge || { memories: 0, skills: 0, uploads: 0, sources: 0 };
+  const kCount = Math.min(32, Math.max(0,
+    (k.skills || 0) + (k.memories || 0) + (k.uploads || 0) + (k.sources || 0)));
   if (kCount > 0) {
     ctx.globalCompositeOperation = "lighter";
     for (let i = 0; i < kCount; i++) {
-      const kind = i < (k.skills || 0) ? "skill" : (i < (k.skills || 0) + (k.memories || 0) ? "memory" : "upload");
-      const band = kind === "skill" ? 2.02 : (kind === "memory" ? 2.28 : 2.52);
+      const kind = knowledgeKind(i, k);
+      const band = knowledgeBand(kind);
       const a = (i * 2.399963) + t * (0.03 + (i % 5) * 0.004) * (i % 2 ? 1 : -1);
       const wob = Math.sin(t * 0.7 + i * 1.7) * base * 0.03;
       const rx = base * band + wob;
@@ -691,22 +720,24 @@ function draw(now) {
       const y = Math.sin(a) * ry;
       const tw = 0.55 + 0.45 * Math.sin(t * 1.2 + i * 0.9);
       ctx.globalAlpha = (0.05 + tw * 0.08) * (0.7 + energy * 0.4);
-      ctx.fillStyle = kind === "upload" ? palette.accent : (kind === "skill" ? palette.core : "rgba(210,240,255,0.9)");
-      const sz = kind === "upload" ? 1.8 : 1.4;
+      ctx.fillStyle = kind === "upload" ? palette.accent
+        : (kind === "source" ? palette.core : (kind === "skill" ? palette.core : "rgba(210,240,255,0.9)"));
+      const sz = kind === "upload" ? 1.8 : (kind === "source" ? 1.6 : 1.4);
       ctx.beginPath();
       ctx.arc(x, y, sz * ui * (0.8 + tw * 0.4), 0, Math.PI * 2);
       ctx.fill();
-      if (i % 3 === 0) {
+      const learningNow = state.current === "learning" || state.activeStages.has("memory");
+      if (i % (learningNow ? 2 : 3) === 0) {
         const j = (i + 2) % kCount;
         const a2 = (j * 2.399963) + t * (0.03 + (j % 5) * 0.004) * (j % 2 ? 1 : -1);
-        const band2 = j < (k.skills || 0) ? 2.02 : (j < (k.skills || 0) + (k.memories || 0) ? 2.28 : 2.52);
+        const band2 = knowledgeBand(knowledgeKind(j, k));
         const x2 = Math.cos(a2) * base * band2;
         const y2 = Math.sin(a2) * base * band2 * 0.74;
         const d = Math.hypot(x2 - x, y2 - y);
         if (d < base * 0.9) {
           ctx.strokeStyle = palette.ring;
-          ctx.globalAlpha = 0.03 + tw * 0.03;
-          ctx.lineWidth = 1;
+          ctx.globalAlpha = (learningNow ? 0.10 : 0.03) + tw * 0.03;
+          ctx.lineWidth = learningNow ? 1.4 : 1;
           ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x2, y2); ctx.stroke();
         }
       }
@@ -1391,6 +1422,9 @@ async function loadKnowledge() {
     state.knowledge.memories = Number(data.memories || 0);
     state.knowledge.skills = Number(data.skills || 0);
     state.knowledge.uploads = Number(data.uploads || 0);
+    state.knowledge.sources = Number(data.sources || 0);
+    state.knowledge.connections = Number(data.connections || 0)
+      || state.knowledge.memories + state.knowledge.skills + state.knowledge.uploads + state.knowledge.sources;
   } catch (_) { }
 }
 
@@ -1402,6 +1436,8 @@ async function loadUploads() {
     const data = await res.json();
     const items = Array.isArray(data.uploads) ? data.uploads : [];
     state.knowledge.uploads = items.length;
+    state.knowledge.connections = state.knowledge.memories + state.knowledge.skills
+      + state.knowledge.uploads + state.knowledge.sources;
     if (!items.length) {
       els.uploadList.innerHTML = '<div class="upload-item"><div>No uploads yet</div><div class="meta">Upload documents for Ada to read and learn from.</div></div>';
       return;

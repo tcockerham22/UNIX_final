@@ -273,9 +273,15 @@ def ingest_upload(path: Path, extracted_path: Path | None) -> None:
             pass
 
 
-def knowledge_snapshot() -> dict:
+def knowledge_snapshot(session_id: str | None = None) -> dict:
     try:
         config = Config.load()
+        if config.profile == "cloud" and session_id and config.database_url:
+            try:
+                state = PostgresState(config.database_url)
+                return state.session_knowledge(session_id)
+            except Exception:
+                LOGGER.warning("Could not load session knowledge snapshot", exc_info=True)
         mem_count = 0
         skill_count = 0
         try:
@@ -343,7 +349,11 @@ class DashboardHandler(BaseHTTPRequestHandler):
         elif path == "/api/uploads":
             self._send_json({"uploads": list_uploads()})
         elif path == "/api/knowledge":
-            self._send_json(knowledge_snapshot())
+            session_id = self._session_id()
+            self._send_json(
+                knowledge_snapshot(session_id),
+                headers={"Set-Cookie": self._session_cookie(session_id)},
+            )
         elif path in STATIC_FILES:
             name, content_type = STATIC_FILES[path]
             self._send_file(WEB_DIR / name, content_type)
@@ -357,6 +367,13 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 self._send_file(WEB_DIR / "cloud.html", "text/html; charset=utf-8", head=True)
             elif path == "/healthz":
                 self._send_json({"ok": True}, head=True)
+            elif path == "/api/knowledge":
+                session_id = self._session_id()
+                self._send_json(
+                    knowledge_snapshot(session_id),
+                    head=True,
+                    headers={"Set-Cookie": self._session_cookie(session_id)},
+                )
             elif path in STATIC_FILES and path in {
                 "/cloud.css", "/cloud.js", "/cloud-orb.html",
                 "/cloud-orb.css", "/style.css", "/app.js",
@@ -373,7 +390,12 @@ class DashboardHandler(BaseHTTPRequestHandler):
         elif path == "/api/uploads":
             self._send_json({"uploads": list_uploads()}, head=True)
         elif path == "/api/knowledge":
-            self._send_json(knowledge_snapshot(), head=True)
+            session_id = self._session_id()
+            self._send_json(
+                knowledge_snapshot(session_id),
+                head=True,
+                headers={"Set-Cookie": self._session_cookie(session_id)},
+            )
         elif path in STATIC_FILES:
             name, content_type = STATIC_FILES[path]
             self._send_file(WEB_DIR / name, content_type, head=True)
@@ -420,6 +442,12 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self._handle_cloud_rag_status()
         elif path == "/api/uploads":
             self._handle_cloud_upload_list()
+        elif path == "/api/knowledge":
+            session_id = self._session_id()
+            self._send_json(
+                knowledge_snapshot(session_id),
+                headers={"Set-Cookie": self._session_cookie(session_id)},
+            )
         else:
             self.send_error(404)
 
