@@ -73,6 +73,13 @@ class CloudProfileTests(unittest.TestCase):
         self.assertEqual(config.database_url, "postgresql://db/ada")
         self.assertEqual(config.web_host, "0.0.0.0")
 
+    def test_cloud_page_uses_a_solid_background(self):
+        css = (Path(__file__).resolve().parent.parent / "web" / "cloud.css").read_text(encoding="utf-8")
+        html = (Path(__file__).resolve().parent.parent / "web" / "cloud.html").read_text(encoding="utf-8")
+        self.assertIn("background: var(--bg);", css)
+        self.assertNotIn("linear-gradient(180deg, #0c1215", css)
+        self.assertNotIn('class="ambient', html)
+
     def test_cloud_tools_are_filtered_and_blocked_at_dispatch(self):
         config = Config(profile="cloud")
         config.enforce_profile()
