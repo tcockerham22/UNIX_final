@@ -272,10 +272,11 @@ installed, the ingestion error will identify that database prerequisite.
 | `deploy/haproxy/` | Public web and private inference routing |
 | `deploy/autoscaler.py` | HAProxy-driven 3–6 web replica scaling |
 | `deploy/ada-autoscaler.service` | systemd unit for the autoscaler |
+| `deploy/ada-container-metrics.service`, `.timer` | systemd units for the Docker count exporter |
 | `deploy/prometheus.yml` | Host, container, HAProxy, and Ada web scrape targets |
 | `deploy/prometheus/rules/ada.rules.yml` | Replica, volume, resource, and error-rate alerts |
 | `deploy/grafana/provisioning/`, `deploy/grafana/dashboards/` | Prometheus datasource and the Ada Cloud dashboard |
-| `tests/test_rag.py`, `tests/test_deploy.py`, `tests/test_phase5.py` | RAG, deployment, and boot-script checks |
+| `tests/test_rag.py`, `tests/test_deploy.py`, `tests/test_phase5.py`, `tests/test_phase7.py` | RAG, deployment, boot-script, and metrics checks |
 
 ## Validation and repository state
 
@@ -320,7 +321,9 @@ a safe summary for the page.
 
 The tab shows replica and inference health, edge request/error rates, response
 and first-token latency, tokens per second, CPU, memory, container count, RAG
-chunk count, volume use, scrape targets, and firing alerts. Prometheus rules
+chunk count, volume use, scrape targets, and firing alerts. A host-side textfile
+exporter supplies the Docker container count because this host's containerd
+image layout does not give cAdvisor usable Docker layer data. Prometheus rules
 cover replica health, AI shims, volumes above 80%, CPU, memory, and Ada 5xx
 rates. Grafana provisioning adds an `Ada Cloud` dashboard with the same signals.
 

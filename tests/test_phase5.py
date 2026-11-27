@@ -17,6 +17,7 @@ SCRIPTS = (
     "startup.sh",
     "startup-ai.sh",
     "startup-edge.sh",
+    "export-container-metrics.sh",
     "lvm-snapshot.sh",
 )
 

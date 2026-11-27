@@ -1,0 +1,11 @@
+[Unit]
+Description=Ada edge Docker container metric exporter
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/ada-export-container-metrics
+
+[Install]
+WantedBy=multi-user.target

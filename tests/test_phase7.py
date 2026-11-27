@@ -160,6 +160,21 @@ class Phase7DeploymentTests(unittest.TestCase):
 
         ada_web = compose.split("\n  ada-web:", 1)[1].split("\n  postgres:", 1)[0]
         self.assertIn("- monitoring", ada_web)
+        self.assertIn("--collector.textfile.directory=/host/textfile", compose)
+        self.assertIn(
+            "/var/lib/node-exporter/textfile_collector:/host/textfile:ro", compose
+        )
+
+    def test_container_metric_exporter_is_installed_by_startup(self):
+        startup = (ROOT / "scripts" / "startup-edge.sh").read_text(encoding="utf-8")
+        service = (ROOT / "deploy" / "ada-container-metrics.service").read_text(encoding="utf-8")
+        timer = (ROOT / "deploy" / "ada-container-metrics.timer").read_text(encoding="utf-8")
+        exporter = (ROOT / "scripts" / "export-container-metrics.sh").read_text(encoding="utf-8")
+        self.assertIn("ada-container-metrics.timer", startup)
+        self.assertIn("ada-export-container-metrics", startup)
+        self.assertIn("ada_containers_running", exporter)
+        self.assertIn("Type=oneshot", service)
+        self.assertIn("OnUnitActiveSec=30s", timer)
 
     def test_prometheus_rules_and_grafana_dashboard_are_provisioned(self):
         prometheus = (ROOT / "deploy" / "prometheus.yml").read_text(encoding="utf-8")
@@ -168,6 +183,7 @@ class Phase7DeploymentTests(unittest.TestCase):
             (ROOT / "deploy" / "grafana" / "dashboards" / "ada-cloud.json").read_text(encoding="utf-8")
         )
         provider = (ROOT / "deploy" / "grafana" / "provisioning" / "dashboards" / "dashboards.yml").read_text(encoding="utf-8")
+        datasource = (ROOT / "deploy" / "grafana" / "provisioning" / "datasources" / "prometheus.yml").read_text(encoding="utf-8")
         self.assertIn("/etc/prometheus/rules/ada.rules.yml", prometheus)
         self.assertIn("- job_name: ada-web", prometheus)
         self.assertIn("alert: AdaWebReplicasDown", rules)
@@ -176,6 +192,10 @@ class Phase7DeploymentTests(unittest.TestCase):
         self.assertIn("/var/lib/grafana/dashboards", provider)
         self.assertEqual(dashboard["uid"], "ada-cloud")
         self.assertTrue(dashboard["panels"])
+        self.assertIn("uid: PBFA97CFB590B2093", datasource)
+        for panel in dashboard["panels"]:
+            with self.subTest(panel=panel["id"]):
+                self.assertEqual(panel["datasource"]["uid"], "PBFA97CFB590B2093")
 
 
 if __name__ == "__main__":

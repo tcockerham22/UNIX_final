@@ -1,0 +1,10 @@
+[Unit]
+Description=Refresh the Ada edge Docker container metric every 30 seconds
+
+[Timer]
+OnBootSec=10s
+OnUnitActiveSec=30s
+Unit=ada-container-metrics.service
+
+[Install]
+WantedBy=timers.target

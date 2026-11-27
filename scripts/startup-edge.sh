@@ -98,11 +98,19 @@ else
     log "WARNING: Prometheus did not reload; it may still be starting"
 fi
 
-log "step 4/4: installing the autoscaler service"
-install -d -m 0755 /etc/ada
+log "step 4/4: installing the autoscaler and container metric services"
+install -d -m 0755 /etc/ada /var/lib/node-exporter/textfile_collector
 install -m 0640 -o root -g ada "$ENV_FILE" "$SYSTEMD_ENV_FILE"
 install -m 0644 "$REPO_DIR/deploy/ada-autoscaler.service" \
     /etc/systemd/system/ada-autoscaler.service
+install -m 0644 "$REPO_DIR/deploy/ada-container-metrics.service" \
+    /etc/systemd/system/ada-container-metrics.service
+install -m 0644 "$REPO_DIR/deploy/ada-container-metrics.timer" \
+    /etc/systemd/system/ada-container-metrics.timer
+install -m 0755 "$REPO_DIR/scripts/export-container-metrics.sh" \
+    /usr/local/bin/ada-export-container-metrics
 systemctl daemon-reload
 systemctl enable --now ada-autoscaler.service || log "WARNING: autoscaler did not start"
+systemctl enable --now ada-container-metrics.timer || log "WARNING: container metric timer did not start"
+/usr/local/bin/ada-export-container-metrics || log "WARNING: container metric was not written"
 log "edge VM setup complete"

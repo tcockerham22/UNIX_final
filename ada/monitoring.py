@@ -24,7 +24,7 @@ EXPRESSIONS = {
     "average_response_seconds": 'haproxy_backend_http_response_time_average_seconds{backend="web_pool"}',
     "cpu_percent": '100 - avg(rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100',
     "memory_percent": '100 * (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)',
-    "containers_running": "count(container_last_seen)",
+    "containers_running": "ada_containers_running",
     "app_requests_per_second": "sum(rate(ada_http_requests_total[5m]))",
     "app_error_rate": (
         'sum(rate(ada_http_requests_total{status=~"5.."}[5m])) '
