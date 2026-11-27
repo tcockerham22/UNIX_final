@@ -53,24 +53,12 @@ class AutoscalerTests(unittest.TestCase):
 
 
 class ReadyShimTests(unittest.TestCase):
-    def test_readiness_probe_runs_prompt_and_requires_loaded_model(self):
+    def test_readiness_probe_checks_model_availability_without_inference(self):
         received_paths = []
-        probed_models = []
 
         class FakeOllamaHandler(BaseHTTPRequestHandler):
             def log_message(self, _format, *_args):
                 pass
-
-            def do_POST(self):
-                received_paths.append(self.path)
-                length = int(self.headers.get("Content-Length", "0"))
-                payload = json.loads(self.rfile.read(length))
-                probed_models.append(payload["model"])
-                body = json.dumps({"message": {"content": "OK"}}).encode()
-                self.send_response(200)
-                self.send_header("Content-Length", str(len(body)))
-                self.end_headers()
-                self.wfile.write(body)
 
             def do_GET(self):
                 received_paths.append(self.path)
@@ -94,8 +82,40 @@ class ReadyShimTests(unittest.TestCase):
                 ready_shim._probe_model()
 
             self.assertGreater(ready_shim.last_success, 0)
-            self.assertEqual(received_paths, ["/api/chat", "/api/ps"])
-            self.assertEqual(probed_models, [ready_shim.MODEL])
+            self.assertEqual(ready_shim.probe_error, "")
+            self.assertEqual(received_paths, ["/api/tags"])
+        finally:
+            upstream.shutdown()
+            upstream.server_close()
+            thread.join(timeout=2)
+
+    def test_readiness_probe_rejects_missing_model(self):
+        class FakeOllamaHandler(BaseHTTPRequestHandler):
+            def log_message(self, _format, *_args):
+                pass
+
+            def do_GET(self):
+                body = json.dumps({"models": [{"name": "other:model"}]}).encode()
+                self.send_response(200)
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+        upstream = HTTPServer(("127.0.0.1", 0), FakeOllamaHandler)
+        thread = threading.Thread(target=upstream.serve_forever, daemon=True)
+        thread.start()
+        try:
+            with patch.object(
+                ready_shim,
+                "OLLAMA_URL",
+                f"http://127.0.0.1:{upstream.server_port}",
+            ):
+                ready_shim.last_success = 0.0
+                ready_shim.probe_error = ""
+                ready_shim._probe_model()
+
+            self.assertEqual(ready_shim.last_success, 0.0)
+            self.assertIn("not available", ready_shim.probe_error)
         finally:
             upstream.shutdown()
             upstream.server_close()

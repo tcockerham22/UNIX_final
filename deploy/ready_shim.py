@@ -12,53 +12,35 @@ from urllib.parse import urlsplit
 
 OLLAMA_URL = os.environ.get("OLLAMA_UPSTREAM", "http://ollama:11434")
 MODEL = os.environ.get("ADA_CLOUD_MODEL", "qwen2.5:3b")
-POLL_SECONDS = 20
-READINESS_SECONDS = 30
-PROBE_TIMEOUT = 30
+POLL_SECONDS = 10
 MAX_REQUEST_BYTES = 32 * 1024 * 1024
 readiness_lock = threading.Lock()
 last_success = 0.0
-probe_error = "model has not passed a readiness probe"
+probe_error = "model availability has not been checked yet"
 
 
 def _probe_model() -> None:
-    """Verify the requested model is loaded and can answer a tiny prompt."""
+    """Confirm Ollama is reachable and the requested model is available."""
     global last_success, probe_error
-    upstream = urlsplit(OLLAMA_URL)
-    connection = http.client.HTTPConnection(
-        upstream.hostname, upstream.port or 80, timeout=PROBE_TIMEOUT
-    )
+    connection = None
     try:
-        payload = json.dumps(
-            {
-                "model": MODEL,
-                "messages": [{"role": "user", "content": "Reply OK."}],
-                "stream": False,
-                "keep_alive": -1,
-                "options": {"num_predict": 2, "num_ctx": 128},
-            }
+        upstream = urlsplit(OLLAMA_URL)
+        connection = http.client.HTTPConnection(
+            upstream.hostname, upstream.port or 80, timeout=5
         )
-        connection.request(
-            "POST",
-            "/api/chat",
-            body=payload,
-            headers={"Content-Type": "application/json"},
-        )
+        connection.request("GET", "/api/tags")
         response = connection.getresponse()
-        result = json.loads(response.read())
-        if response.status != 200 or not result.get("message", {}).get("content"):
-            raise RuntimeError(f"Ollama test prompt returned HTTP {response.status}")
-
-        connection.request("GET", "/api/ps")
-        response = connection.getresponse()
+        body = response.read()
         if response.status != 200:
-            raise RuntimeError(f"Ollama process listing returned HTTP {response.status}")
-        loaded_models = json.loads(response.read()).get("models", [])
-        if not any(
+            raise RuntimeError(f"Ollama model listing returned HTTP {response.status}")
+
+        models = json.loads(body).get("models", [])
+        available = any(
             item.get("name") == MODEL or item.get("model") == MODEL
-            for item in loaded_models
-        ):
-            raise RuntimeError(f"model {MODEL!r} is not loaded")
+            for item in models
+        )
+        if not available:
+            raise RuntimeError(f"model {MODEL!r} is not available")
 
         with readiness_lock:
             last_success = time.monotonic()
@@ -67,11 +49,12 @@ def _probe_model() -> None:
         with readiness_lock:
             probe_error = str(error)
     finally:
-        connection.close()
+        if connection is not None:
+            connection.close()
 
 
 def _readiness_loop() -> None:
-    """Refresh model readiness periodically without blocking health requests."""
+    """Refresh model availability without sending inference requests."""
     while True:
         _probe_model()
         time.sleep(POLL_SECONDS)
@@ -93,7 +76,7 @@ class ReadyProxyHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         if self.path == "/ready":
             with readiness_lock:
-                ready = last_success > 0 and time.monotonic() - last_success <= READINESS_SECONDS
+                ready = last_success > 0
                 detail = probe_error
             body = json.dumps({"ready": ready, "detail": detail}).encode("utf-8")
             self.send_response(200 if ready else 503)
