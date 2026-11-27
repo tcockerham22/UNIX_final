@@ -192,10 +192,10 @@ class Phase7DeploymentTests(unittest.TestCase):
         self.assertIn("/var/lib/grafana/dashboards", provider)
         self.assertEqual(dashboard["uid"], "ada-cloud")
         self.assertTrue(dashboard["panels"])
-        self.assertIn("uid: PBFA97CFB590B2093", datasource)
+        self.assertNotIn("uid:", datasource)
         for panel in dashboard["panels"]:
             with self.subTest(panel=panel["id"]):
-                self.assertEqual(panel["datasource"]["uid"], "PBFA97CFB590B2093")
+                self.assertEqual(panel["datasource"], "Prometheus")
 
 
 if __name__ == "__main__":

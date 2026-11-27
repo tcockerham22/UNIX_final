@@ -13,7 +13,7 @@
       "type": "stat",
       "title": "Web replicas",
       "gridPos": { "h": 4, "w": 4, "x": 0, "y": 0 },
-      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "datasource": "Prometheus",
       "targets": [{ "expr": "sum(haproxy_server_up{backend=\"web_pool\"})", "refId": "A" }],
       "fieldConfig": { "defaults": { "unit": "short", "max": 6 }, "overrides": [] },
       "options": { "colorMode": "background", "graphMode": "area" }
@@ -23,7 +23,7 @@
       "type": "stat",
       "title": "AI shims",
       "gridPos": { "h": 4, "w": 4, "x": 4, "y": 0 },
-      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "datasource": "Prometheus",
       "targets": [{ "expr": "sum(haproxy_server_up{backend=\"ollama_pool\"})", "refId": "A" }],
       "fieldConfig": { "defaults": { "unit": "short", "max": 2 }, "overrides": [] },
       "options": { "colorMode": "background", "graphMode": "area" }
@@ -33,7 +33,7 @@
       "type": "stat",
       "title": "Requests / sec",
       "gridPos": { "h": 4, "w": 4, "x": 8, "y": 0 },
-      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "datasource": "Prometheus",
       "targets": [{ "expr": "sum(rate(haproxy_frontend_http_requests_total{frontend=\"public_http\"}[5m]))", "refId": "A" }],
       "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
       "options": { "colorMode": "value", "graphMode": "area" }
@@ -43,7 +43,7 @@
       "type": "stat",
       "title": "5xx / sec",
       "gridPos": { "h": 4, "w": 4, "x": 12, "y": 0 },
-      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "datasource": "Prometheus",
       "targets": [{ "expr": "sum(rate(haproxy_frontend_http_responses_total{frontend=\"public_http\",code=\"5xx\"}[5m]))", "refId": "A" }],
       "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
       "options": { "colorMode": "value", "graphMode": "area" }
@@ -53,7 +53,7 @@
       "type": "stat",
       "title": "Firing alerts",
       "gridPos": { "h": 4, "w": 4, "x": 16, "y": 0 },
-      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "datasource": "Prometheus",
       "targets": [{ "expr": "sum(ALERTS{state=\"firing\"})", "refId": "A" }],
       "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
       "options": { "colorMode": "background", "graphMode": "none" }
@@ -63,7 +63,7 @@
       "type": "timeseries",
       "title": "App request latency (p95)",
       "gridPos": { "h": 7, "w": 12, "x": 0, "y": 4 },
-      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "datasource": "Prometheus",
       "targets": [{ "expr": "histogram_quantile(0.95, sum by (le) (rate(ada_http_request_duration_seconds_bucket[5m])))", "refId": "A" }],
       "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
       "options": { "legend": { "displayMode": "list" }, "tooltip": { "mode": "multi" } }
@@ -73,7 +73,7 @@
       "type": "timeseries",
       "title": "First token (p95)",
       "gridPos": { "h": 7, "w": 12, "x": 12, "y": 4 },
-      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "datasource": "Prometheus",
       "targets": [{ "expr": "histogram_quantile(0.95, sum by (le) (rate(ada_chat_first_token_seconds_bucket[5m])))", "refId": "A" }],
       "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
       "options": { "legend": { "displayMode": "list" }, "tooltip": { "mode": "multi" } }
@@ -83,7 +83,7 @@
       "type": "timeseries",
       "title": "Streamed tokens / sec",
       "gridPos": { "h": 7, "w": 12, "x": 0, "y": 11 },
-      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "datasource": "Prometheus",
       "targets": [{ "expr": "sum(rate(ada_chat_output_tokens_total[5m]))", "refId": "A" }],
       "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
       "options": { "legend": { "displayMode": "list" }, "tooltip": { "mode": "multi" } }
@@ -93,7 +93,7 @@
       "type": "timeseries",
       "title": "CPU and memory use",
       "gridPos": { "h": 7, "w": 12, "x": 12, "y": 11 },
-      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "datasource": "Prometheus",
       "targets": [
         { "expr": "100 - avg(rate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100", "legendFormat": "CPU", "refId": "A" },
         { "expr": "100 * (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)", "legendFormat": "Memory", "refId": "B" }
@@ -106,7 +106,7 @@
       "type": "timeseries",
       "title": "Volume use",
       "gridPos": { "h": 7, "w": 24, "x": 0, "y": 18 },
-      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "datasource": "Prometheus",
       "targets": [{ "expr": "100 * (1 - node_filesystem_avail_bytes{fstype=~\"ext4|xfs\",mountpoint!~\"/boot.*|/run.*|/dev.*\"} / node_filesystem_size_bytes{fstype=~\"ext4|xfs\",mountpoint!~\"/boot.*|/run.*|/dev.*\"})", "legendFormat": "{{mountpoint}}", "refId": "A" }],
       "fieldConfig": {
         "defaults": { "unit": "percent", "thresholds": { "mode": "absolute", "steps": [{ "color": "green" }, { "color": "orange", "value": 80 }, { "color": "red", "value": 90 }] } },
