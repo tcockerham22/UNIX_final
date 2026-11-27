@@ -1,30 +1,39 @@
 # How the data tier fits together
 
+For the VM boot sequence and Secret Manager wiring, see
+[docs/startup.md](startup.md).
+
 ## Boot order
 
-The startup script (Member 2) should do, on every boot:
+The Phase 5 startup scripts do this on every boot:
 
-1. Install Docker if it's missing.
-2. Run `scripts/deploy-data-tier.sh`, which does:
-   1. `scripts/setup-lvm.sh` to create and mount `/data/db` and `/models`
-   2. get `DB_PASSWORD` from Secret Manager (secret name `db-password`)
-   3. `docker compose -f compose/docker-compose.db.yml up -d`
-   4. wait for the database health check
-   5. `scripts/ingest.py --if-empty` once the embedding service answers
-3. Start the inference, web and load balancer containers.
+1. On `ada-ai`, `scripts/startup-ai.sh` installs Docker, mounts `/models` with
+   `scripts/setup-lvm.sh`, stages missing model weights, and starts
+   `deploy/ai.compose.yml`.
+2. On `ada-edge`, `scripts/startup-edge.sh` installs Docker, mounts `/data/db`,
+   reads `db-password` and `grafana-admin-password` from Secret Manager, writes
+   an ignored `.env`, starts `deploy/edge.compose.yml` with three web replicas,
+   and enables the autoscaler. The Compose `ingest` service runs
+   `python -m ingest.ingest --if-empty`, so ingestion is conditional.
+
+`scripts/deploy-data-tier.sh` is the local/test variant. It starts
+`compose/docker-compose.db.yml` and waits for a host-side Ollama endpoint. The
+edge startup script does not run it because `edge.compose.yml` owns PostgreSQL
+on an internal Compose network.
 
 Each step checks before acting, so a reboot doesn't rebuild anything.
 
 ## What the others need
 
-**Member 2:** call the deploy script. Attach a second disk of 40 GB or more
-with `device_name = "data-disk"`. Create a secret named `db-password` and let
-the VM's service account read it (`roles/secretmanager.secretAccessor`).
+**Member 2:** call `scripts/startup.sh edge` / `scripts/startup.sh ai` from
+startup-script metadata. Attach a second disk of 40 GB or more with
+`device_name = "data-disk"`. Create secrets named `db-password` and
+`grafana-admin-password` with `scripts/manage-secrets.sh`, and let the VM's
+service account read them (`roles/secretmanager.secretAccessor`).
 
-**Member 3:** put the web services on the same Docker network as the
-database. Either merge the `db` service into the main Compose file or use
-Compose `include:` with the same network name. Inside Docker the database is
-`db:5432`, database `ragdb`, user `raguser`.
+**Member 3:** the web services already share the `database` network with the
+`postgres` service in `deploy/edge.compose.yml`. Inside Docker the database is
+`postgres:5432`, database `ragdb`, user `raguser`.
 
 **Member 4:** run Ollama with its models on `/models` and pull the embedding
 model before ingestion runs (default `nomic-embed-text`, 768 dimensions).

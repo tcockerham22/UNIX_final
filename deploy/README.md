@@ -2,8 +2,18 @@
 
 These files implement the RAG application, container services, load balancing,
 and web-tier scaling. The VM provisioning, LVM setup, firewall, and Secret
-Manager wiring are later phases; do not expose Docker-published AI ports to the
-public Internet.
+Manager wiring are now provided by `scripts/startup-*.sh` (see
+`docs/startup.md`); do not expose Docker-published AI ports to the public
+Internet.
+
+## VM startup (phase 5)
+
+`scripts/startup-edge.sh` installs Docker, creates `/data/db`, reads the
+database and Grafana passwords from Secret Manager, writes an ignored `.env`,
+and starts `edge.compose.yml` with three web replicas plus the autoscaler.
+`scripts/startup-ai.sh` creates `/models`, stages missing weights, and starts
+`ai.compose.yml`. Both are idempotent and can be invoked through
+`scripts/startup.sh <edge|ai>` from GCP startup-script metadata.
 
 ## RAG application
 

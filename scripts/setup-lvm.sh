@@ -10,6 +10,10 @@
 #
 # DATA_DISK defaults to the GCP disk with device name "data-disk".
 # The LVs don't use the whole disk; the leftover space is for snapshots.
+#
+# SETUP_DB=0 or SETUP_MODELS=0 skips one volume (used by the role-specific
+# startup scripts). The script refuses to run pvcreate on a disk that already
+# has a filesystem or partitions; set ALLOW_WIPE=1 only if that is intentional.
 
 set -euo pipefail
 
@@ -21,6 +25,9 @@ LV_DB_SIZE="${LV_DB_SIZE:-10G}"
 LV_MODELS_SIZE="${LV_MODELS_SIZE:-15G}"
 DB_MOUNT="${DB_MOUNT:-/data/db}"
 MODELS_MOUNT="${MODELS_MOUNT:-/models}"
+SETUP_DB="${SETUP_DB:-1}"
+SETUP_MODELS="${SETUP_MODELS:-1}"
+ALLOW_WIPE="${ALLOW_WIPE:-0}"
 
 log() { echo "[setup-lvm] $*"; }
 die() { echo "[setup-lvm] ERROR: $*" >&2; exit 1; }
@@ -40,6 +47,14 @@ REAL_DISK="$(readlink -f "$DATA_DISK")"
 if pvs "$REAL_DISK" >/dev/null 2>&1; then
     log "physical volume on $REAL_DISK already exists"
 else
+    # Never silently destroy data that is already on the disk.
+    if [[ "$ALLOW_WIPE" != "1" ]] && blkid "$REAL_DISK" >/dev/null 2>&1; then
+        die "$REAL_DISK already has a filesystem; refusing to wipe it (set ALLOW_WIPE=1 only if intentional)"
+    fi
+    if [[ "$ALLOW_WIPE" != "1" ]] \
+        && lsblk -n -o TYPE "$REAL_DISK" 2>/dev/null | grep -q '^part$'; then
+        die "$REAL_DISK already has partitions; refusing to wipe it (set ALLOW_WIPE=1 only if intentional)"
+    fi
     log "creating physical volume on $REAL_DISK"
     pvcreate "$REAL_DISK"
 fi
@@ -62,8 +77,16 @@ ensure_lv() {
         lvcreate -L "$size" -n "$name" "$VG_NAME"
     fi
 }
-ensure_lv "$LV_DB_NAME" "$LV_DB_SIZE"
-ensure_lv "$LV_MODELS_NAME" "$LV_MODELS_SIZE"
+if [[ "$SETUP_DB" == "1" ]]; then
+    ensure_lv "$LV_DB_NAME" "$LV_DB_SIZE"
+else
+    log "skipping $LV_DB_NAME (SETUP_DB=0)"
+fi
+if [[ "$SETUP_MODELS" == "1" ]]; then
+    ensure_lv "$LV_MODELS_NAME" "$LV_MODELS_SIZE"
+else
+    log "skipping $LV_MODELS_NAME (SETUP_MODELS=0)"
+fi
 
 # 4. Filesystem, fstab entry, and mount for each LV
 ensure_mount() {
@@ -95,18 +118,33 @@ ensure_mount() {
         mount "$mount_point"
     fi
 }
-ensure_mount "$LV_DB_NAME" "$DB_MOUNT" "rag_db"
-ensure_mount "$LV_MODELS_NAME" "$MODELS_MOUNT" "rag_models"
+if [[ "$SETUP_DB" == "1" ]]; then
+    ensure_mount "$LV_DB_NAME" "$DB_MOUNT" "rag_db"
+else
+    log "skipping mount for $DB_MOUNT (SETUP_DB=0)"
+fi
+if [[ "$SETUP_MODELS" == "1" ]]; then
+    ensure_mount "$LV_MODELS_NAME" "$MODELS_MOUNT" "rag_models"
+else
+    log "skipping mount for $MODELS_MOUNT (SETUP_MODELS=0)"
+fi
 
 # 5. PostgreSQL data directory (a subfolder, because a new ext4 root contains
 #    lost+found and Postgres refuses to initialize in a non-empty directory)
-mkdir -p "$DB_MOUNT/pgdata"
+if [[ "$SETUP_DB" == "1" ]]; then
+    mkdir -p "$DB_MOUNT/pgdata"
+fi
 
 # 6. Report
 log "done. Summary:"
 vgs -o vg_name,vg_size,vg_free "$VG_NAME"
 lvs -o lv_name,lv_size,lv_path "$VG_NAME"
-df -h "$DB_MOUNT" "$MODELS_MOUNT"
+report_targets=()
+if [[ "$SETUP_DB" == "1" ]]; then report_targets+=("$DB_MOUNT"); fi
+if [[ "$SETUP_MODELS" == "1" ]]; then report_targets+=("$MODELS_MOUNT"); fi
+if (( ${#report_targets[@]} )); then
+    df -h "${report_targets[@]}"
+fi
 
 free_bytes="$(vgs --noheadings --units b --nosuffix -o vg_free "$VG_NAME" | tr -d ' ')"
 if (( free_bytes < 2147483648 )); then

@@ -2,22 +2,62 @@
 
 from __future__ import annotations
 
+import subprocess
+import tempfile
 from io import BytesIO
 from pathlib import PurePath
 from xml.etree import ElementTree
 from zipfile import BadZipFile, ZipFile
 
 DOCX_DOCUMENT_XML_LIMIT = 10 * 1024 * 1024
+PDF_TEXT_TIMEOUT_SECONDS = 60
 
 
 def extract_document_text(filename: str, content: bytes) -> str | None:
-    """Extract readable text from common text files and Word .docx files."""
+    """Extract readable text from common text files, Word, and PDF uploads."""
     extension = PurePath(filename).suffix.lower()
     if extension in {".txt", ".md", ".csv", ".json", ".rtf"}:
         return content.decode("utf-8", errors="replace").strip() or None
     if extension == ".docx":
         return _extract_docx_text(content)
+    if extension == ".pdf":
+        return _extract_pdf_text(content)
     return None
+
+
+def _extract_pdf_text(content: bytes) -> str | None:
+    """Read a PDF with an available Python library, then fall back to pdftotext."""
+    # Prefer libraries that can read from memory so no file needs to be written.
+    for module_name in ("pypdf", "PyPDF2"):
+        try:
+            module = __import__(module_name)
+            reader = module.PdfReader(BytesIO(content))
+            text = "\n".join(
+                (page.extract_text() or "") for page in reader.pages
+            ).strip()
+            if text:
+                return text
+        except Exception:
+            continue
+
+    # Most VM images already have Poppler's pdftotext. It needs a path, so use
+    # a private temporary file and remove it as soon as the call finishes.
+    try:
+        with tempfile.NamedTemporaryFile(suffix=".pdf") as temporary:
+            temporary.write(content)
+            temporary.flush()
+            completed = subprocess.run(
+                ["pdftotext", "-layout", temporary.name, "-"],
+                capture_output=True,
+                text=True,
+                timeout=PDF_TEXT_TIMEOUT_SECONDS,
+                check=False,
+            )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if completed.returncode != 0:
+        return None
+    return (completed.stdout or "").strip() or None
 
 
 def _extract_docx_text(content: bytes) -> str:

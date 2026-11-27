@@ -6,3 +6,4 @@ faster-whisper>=1.1.0
 ddgs>=9.0
 httpx>=0.27
 psycopg[binary]>=3.2,<4
+pypdf>=5.0

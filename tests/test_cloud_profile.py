@@ -327,6 +327,60 @@ class CloudWebTests(unittest.TestCase):
         self.assertEqual(add_upload.call_args.args[1], "assignment.docx")
         self.assertEqual(add_upload.call_args.args[4], "Buffer overflow assignment")
 
+    def test_cloud_upload_extracts_pdf_text_for_chat(self):
+        import base64
+        from subprocess import CompletedProcess
+
+        state = self.server.cloud_state
+        pdf_bytes = b"%PDF-1.4 fake but pdftotext will be mocked\n%%EOF\n"
+        with patch.object(state, "add_upload") as add_upload, patch.object(
+            state, "list_uploads", return_value=[]
+        ), patch(
+            "ada.documents.subprocess.run",
+            return_value=CompletedProcess(
+                args=[], returncode=0, stdout="Wages 48,000\nTax 6,200\n", stderr=""
+            ),
+        ) as convert:
+            status, _headers, result = self.request(
+                "POST",
+                "/api/upload",
+                {
+                    "name": "2025_TaxReturn-Connor.pdf",
+                    "data": base64.b64encode(pdf_bytes).decode("ascii"),
+                },
+            )
+
+        self.assertEqual(status, 200)
+        self.assertTrue(result["file"]["readable"])
+        self.assertEqual(add_upload.call_args.args[1], "2025_TaxReturn-Connor.pdf")
+        self.assertEqual(
+            add_upload.call_args.args[4], "Wages 48,000\nTax 6,200"
+        )
+        convert.assert_called_once()
+        self.assertIn("pdftotext", convert.call_args.args[0])
+
+    def test_cloud_upload_rejects_pdf_with_no_readable_text(self):
+        import base64
+        from subprocess import CompletedProcess
+
+        with patch(
+            "ada.documents.subprocess.run",
+            return_value=CompletedProcess(args=[], returncode=0, stdout="", stderr=""),
+        ):
+            status, _headers, result = self.request(
+                "POST",
+                "/api/upload",
+                {
+                    "name": "scan.pdf",
+                    "data": base64.b64encode(
+                        b"%PDF-1.4 no text\n%%EOF\n"
+                    ).decode("ascii"),
+                },
+            )
+
+        self.assertEqual(status, 400)
+        self.assertIn("No readable text was found in the PDF", result["error"])
+
     @patch("ada.web.PostgresState.get_upload_context", return_value="### assignment.docx\nAssignment details")
     @patch("ada.web.PostgresMemory.prompt", return_value="")
     @patch("ada.web.ollama.Client")
@@ -432,6 +486,46 @@ class CloudWebTests(unittest.TestCase):
             [{"source": source["source"], "chunk_idx": 1, "score": 0.91}],
         )
         self.assertTrue(client_class.return_value.chat.call_args.kwargs["stream"])
+
+    @patch(
+        "ada.web.PostgresState.get_upload_context",
+        return_value="### 2025_TaxReturn-Connor.pdf\nWages 48,000\nTax 6,200",
+    )
+    @patch("ada.web.PostgresMemory.prompt", return_value="")
+    @patch("ada.web.PostgresRAG")
+    @patch("ada.web.ollama.Client")
+    def test_rag_chat_prefers_uploaded_document_over_corpus(
+        self, client_class, rag_class, _memory_prompt, _upload_context
+    ):
+        rag_class.return_value.retrieve.return_value = [
+            {
+                "source": "assets/skills/pepper-s-cone-diy-3d-display.md",
+                "chunk_idx": 1,
+                "score": 0.4,
+                "content": "A pepper ghost cone display.",
+            }
+        ]
+        client_class.return_value.chat.return_value = iter(
+            [{"message": {"content": "Wages of 48,000 and tax of 6,200."}}]
+        )
+        with patch.object(self.server.cloud_state, "get_history", return_value=[]), patch.object(
+            self.server.cloud_state, "append_turn"
+        ) as append_turn:
+            status, _headers, body = self.request(
+                "POST", "/api/rag/chat", {"message": "Summarize my 2025 taxes"}
+            )
+
+        self.assertEqual(status, 200)
+        self.assertIn(b"Uploaded session documents", body)
+        self.assertNotIn(b"pepper-s-cone", body)
+        rag_class.return_value.retrieve.assert_not_called()
+        system_prompt = client_class.return_value.chat.call_args.kwargs["messages"][0]["content"]
+        self.assertIn("primary source", system_prompt)
+        self.assertIn("Wages 48,000", system_prompt)
+        self.assertEqual(
+            append_turn.call_args.kwargs["sources"],
+            [{"source": "Uploaded session documents", "chunk_idx": None, "score": 1.0}],
+        )
 
     def test_cloud_upload_rejects_unsupported_file_types(self):
         status, _headers, result = self.request(

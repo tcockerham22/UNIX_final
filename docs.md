@@ -22,8 +22,9 @@ is being developed as a separate profile for a university sysadmin project:
 - Use readable, straightforward code that teammates can explain.
 
 Work was initially requested in phases with approval between phases. The owner
-has since asked to proceed through phases 2, 3, and 4 together. The status below
-reflects that scope. Phases 5–9 have not been implemented.
+has since asked to proceed through phases 2, 3, and 4 together, and Phase 5 has
+now been added. The status below reflects that scope. Phases 6–9 have not been
+implemented.
 
 ## Current status
 
@@ -34,7 +35,7 @@ reflects that scope. Phases 5–9 have not been implemented.
 | 2 | Corpus, chunking, Ollama embeddings, pgvector retrieval, cited streaming chat | Implemented in this work |
 | 3 | Web, database, inference, readiness shim, and monitoring containers | Compose and Docker definitions added; not built or deployed |
 | 4 | HAProxy, rate limiting, Prometheus exporter, web autoscaler | Configurations and service added; not run against live infrastructure |
-| 5 | LVM, startup scripts, Secret Manager retrieval, snapshots | Not implemented |
+| 5 | LVM, startup scripts, Secret Manager retrieval, snapshots | Implemented in this work; not run on GCP |
 | 6 | Terraform network, firewalls, VMs, disks, service account, secrets | Not implemented |
 | 7 | Application metrics, alert rules, production Grafana dashboards | Partial infrastructure only; not complete |
 | 8 | Smoke, load, failover, and rate-limit test harness | Not implemented |
@@ -116,8 +117,10 @@ HTTP-only and same-site. Do not copy session cookies into logs or reports.
   and source list.
 - The UI displays corpus filenames and chunk numbers and stores citations with
   assistant history so they remain visible after reload.
-- Readable uploaded text and `.docx` content is included as session context;
-  its source is shown separately from corpus chunk citations.
+- Readable uploaded text, `.docx`, and text-bearing `.pdf` content is included
+  as session context. When an upload is present it becomes the primary source
+  for that session, so unrelated corpus chunks are not mixed into the answer;
+  the source is shown as `Uploaded session documents`.
 - `GET /api/rag/status` reports the number of indexed passages.
 - The legacy `POST /api/chat` endpoint remains available for compatibility.
   The cloud chat UI uses the RAG endpoint.
@@ -169,8 +172,8 @@ per model replica:
   model is loaded. It answers `/ready` with 200 only after a successful check
   within the last 30 seconds; otherwise it returns 503.
 
-The default model directory is `/models`; the startup scripts and LVM creation
-that guarantee this directory exists are phase 5 work. Neither model is
+The default model directory is `/models`; the Phase 5 AI startup script creates
+that LVM mount and stages any missing model weights. Neither model is
 downloaded during image build.
 
 ### Container limits and unverified operations
@@ -233,9 +236,9 @@ For the local cloud profile:
 The local script's PostgreSQL URL uses the database's local connection
 credentials. The edge Compose stack instead needs a URL whose database host
 is the Compose service name `postgres`, as well as `POSTGRES_PASSWORD` and
-`GRAFANA_ADMIN_PASSWORD`. For cloud deployment, obtain these values from GCP
-Secret Manager in phase 5; do not commit them to `.env`, Compose files, or this
-documentation.
+`GRAFANA_ADMIN_PASSWORD`. The Phase 5 edge startup script reads these from GCP
+Secret Manager and writes an ignored `.env` file at boot; do not commit them to
+`.env`, Compose files, or this documentation.
 
 If `nomic-embed-text` or the chat model is missing, the launcher exits and
 prints the relevant `ollama pull` command. If PostgreSQL is unreachable, fix
@@ -249,11 +252,17 @@ installed, the ingestion error will identify that database prerequisite.
 | `ada/config.py` | Profile, local defaults, and environment-driven cloud settings |
 | `ada/web.py` | Local and cloud HTTP handlers, chat routes, streaming SSE, uploads |
 | `ada/cloud_state.py` | PostgreSQL chat history, memories, uploads, and citations |
-| `ada/documents.py` | Dependency-free readable-text and `.docx` extraction |
+| `ada/documents.py` | Readable-text, `.docx`, and `.pdf` extraction (pypdf with `pdftotext` fallback) |
 | `ada/rag.py` | Markdown chunking, Ollama embeddings, pgvector schema and retrieval |
 | `corpus/` | Smoke-test facts and reference material |
 | `assets/skills/` | Existing Ada Markdown skills included in ingestion |
 | `ingest/ingest.py` | Idempotent corpus loader |
+| `scripts/setup-lvm.sh` | Idempotent PV/VG/LV, fstab, and mount setup |
+| `scripts/install-docker.sh` | Idempotent Docker and Compose installation |
+| `scripts/manage-secrets.sh`, `scripts/get-secret.sh` | One-time secret creation and VM-side retrieval |
+| `scripts/startup.sh`, `scripts/startup-edge.sh`, `scripts/startup-ai.sh` | Role-based VM boot scripts |
+| `scripts/lvm-snapshot.sh` | Database snapshot helper |
+| `docs/startup.md` | Phase 5 boot, storage, and secret guide |
 | `web/cloud.html`, `web/cloud.css`, `web/cloud.js` | Cloud chat page, sources, file upload, and SSE client |
 | `Dockerfile`, `requirements-web.txt` | Non-root web image and pinned web dependencies |
 | `deploy/edge.compose.yml` | Edge VM services and monitoring |
@@ -263,15 +272,15 @@ installed, the ingestion error will identify that database prerequisite.
 | `deploy/autoscaler.py` | HAProxy-driven 3–6 web replica scaling |
 | `deploy/ada-autoscaler.service` | systemd unit for the autoscaler |
 | `deploy/prometheus.yml` | Initial host/container/HAProxy scrape targets |
-| `tests/test_rag.py`, `tests/test_deploy.py` | RAG and deployment behavior tests |
+| `tests/test_rag.py`, `tests/test_deploy.py`, `tests/test_phase5.py` | RAG, deployment, and boot-script checks |
 
 ## Validation and repository state
 
 The project test suite covers the existing local behavior and the cloud profile,
 RAG chunking/IDs/embeddings/retrieval, source-stream persistence, the readiness
-probe, and autoscaler decisions. The Compose files are checked with
-`docker compose config`; Python, JavaScript, and shell syntax are checked
-separately.
+probe, autoscaler decisions, and static checks for the Phase 5 boot scripts. The
+Compose files are checked with `docker compose config`; Python, JavaScript, and
+shell syntax are checked separately.
 
 The repository already had unrelated uncommitted changes before phases 2–4.
 Those changes have been preserved. No GitHub push has been made, and no
@@ -279,13 +288,6 @@ commit has been created because staging shared dirty files would risk bundling
 unrelated work.
 
 ## Remaining phases
-
-### Phase 5: startup scripts and persistent volumes
-
-Still needed: idempotent VM boot scripts, Docker installation, PV/VG/LV creation
-without reformatting existing storage, `/etc/fstab` mounts, Secret Manager
-retrieval/initial secret creation, Compose startup, conditional ingestion, and
-an LVM snapshot helper.
 
 ### Phase 6: Terraform
 

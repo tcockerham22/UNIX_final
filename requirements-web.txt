@@ -1,3 +1,4 @@
 ollama==0.6.3
 psycopg[binary]==3.3.9
 httpx==0.28.1
+pypdf==7.2.0

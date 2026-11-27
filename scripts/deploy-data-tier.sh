@@ -5,7 +5,7 @@
 #   sudo -E ./scripts/deploy-data-tier.sh
 #
 #   1. LVM setup           (scripts/setup-lvm.sh)
-#   2. get DB password     (DB_PASSWORD env var, else Secret Manager)
+#   2. get DB password     (DB_PASSWORD env var, else Secret Manager via metadata)
 #   3. start the database  (compose/docker-compose.db.yml)
 #   4. wait for it to be healthy
 #   5. load documents      (scripts/ingest.py --if-empty)
@@ -40,8 +40,8 @@ bash "$REPO_ROOT/scripts/setup-lvm.sh"
 # 2. Password
 log "step 2/5: database password"
 if [[ -z "${DB_PASSWORD:-}" ]]; then
-    command -v gcloud >/dev/null 2>&1 || die "DB_PASSWORD not set and gcloud is not installed"
-    DB_PASSWORD="$(gcloud secrets versions access latest --secret="${DB_SECRET_NAME:-db-password}")"
+    DB_PASSWORD="$(bash "$REPO_DIR/scripts/get-secret.sh" "${DB_SECRET_NAME:-db-password}")" \
+        || die "could not read the database password from Secret Manager"
     [[ -n "$DB_PASSWORD" ]] || die "Secret Manager returned an empty password"
 fi
 export DB_PASSWORD
