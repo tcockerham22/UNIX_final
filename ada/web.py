@@ -842,7 +842,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
             ]
             context_parts = [
                 f"[Source: {item['source']} | chunk {item['chunk_idx']}]\n"
-                f"{item['content'][:800]}"
+                f"{item['content'][:500]}"
                 for item in retrieved
             ]
 

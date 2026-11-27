@@ -29,7 +29,7 @@ services:
       ADA_PROFILE: cloud
       ADA_DATABASE_URL: ${ADA_DATABASE_URL:?Set ADA_DATABASE_URL}
       ADA_OLLAMA_HOST: http://haproxy:8400
-      ADA_CLOUD_MODEL: ${ADA_CLOUD_MODEL:-qwen2.5:3b}
+      ADA_CLOUD_MODEL: ${ADA_CLOUD_MODEL:-qwen2.5:1.5b}
       ADA_WEB_HOST: 0.0.0.0
       ADA_WEB_PORT: "8765"
     depends_on:
@@ -85,7 +85,7 @@ services:
       ADA_PROFILE: cloud
       ADA_DATABASE_URL: ${ADA_DATABASE_URL:?Set ADA_DATABASE_URL}
       ADA_OLLAMA_HOST: http://haproxy:8400
-      ADA_CLOUD_MODEL: ${ADA_CLOUD_MODEL:-qwen2.5:3b}
+      ADA_CLOUD_MODEL: ${ADA_CLOUD_MODEL:-qwen2.5:1.5b}
     depends_on:
       postgres:
         condition: service_healthy

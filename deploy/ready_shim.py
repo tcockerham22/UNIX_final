@@ -11,7 +11,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlsplit
 
 OLLAMA_URL = os.environ.get("OLLAMA_UPSTREAM", "http://ollama:11434")
-MODEL = os.environ.get("ADA_CLOUD_MODEL", "qwen2.5:3b")
+MODEL = os.environ.get("ADA_CLOUD_MODEL", "qwen2.5:1.5b")
 POLL_SECONDS = 10
 MAX_REQUEST_BYTES = 32 * 1024 * 1024
 readiness_lock = threading.Lock()

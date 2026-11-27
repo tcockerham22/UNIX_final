@@ -120,7 +120,7 @@ class PostgresState:
             """
         )
 
-    def get_history(self, session_id: str, limit: int = 30) -> list[dict]:
+    def get_history(self, session_id: str, limit: int = 8) -> list[dict]:
         """Return the most recent messages in chronological order."""
         with self._connection() as connection:
             rows = connection.execute(
@@ -205,7 +205,7 @@ class PostgresState:
             )
 
     def get_upload_context(
-        self, session_id: str, max_chars: int = 16000
+        self, session_id: str, max_chars: int = 8000
     ) -> str:
         """Return a bounded excerpt of this session's readable uploaded documents."""
         with self._connection() as connection:

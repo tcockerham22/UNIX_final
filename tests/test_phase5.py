@@ -68,6 +68,9 @@ class Phase5ScriptTests(unittest.TestCase):
         startup = (ROOT / "scripts" / "startup-ai.sh").read_text(encoding="utf-8")
         self.assertEqual(compose.count("ollama/ollama:0.40.18"), 2)
         self.assertIn("ollama/ollama:0.40.18", startup)
+        self.assertEqual(compose.count("qwen2.5:1.5b"), 2)
+        self.assertEqual(compose.count('cpus: "4.00"'), 2)
+        self.assertEqual(compose.count('OLLAMA_NUM_THREADS: "4"'), 2)
 
     def test_haproxy_dockerfile_uses_repo_relative_copy_paths(self):
         dockerfile = (ROOT / "deploy" / "haproxy" / "Dockerfile").read_text(encoding="utf-8")

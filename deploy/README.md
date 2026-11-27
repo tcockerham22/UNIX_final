@@ -24,7 +24,7 @@ pgvector. `ON CONFLICT DO NOTHING` makes repeated ingestion safe. The current
 repository corpus and skills produce at least 25 chunks.
 
 For a local cloud-profile setup, ensure PostgreSQL has the pgvector extension,
-Ollama is running, and both `ADA_CLOUD_MODEL` (default `qwen2.5:3b`) and
+Ollama is running, and both `ADA_CLOUD_MODEL` (default `qwen2.5:1.5b`) and
 `nomic-embed-text` are available. Then set `ADA_PROFILE=cloud` and
 `ADA_DATABASE_URL`, and run:
 

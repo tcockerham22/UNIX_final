@@ -7,7 +7,7 @@
 #
 # Optional env vars:
 #   REPO_DIR          checkout location (default /opt/ada)
-#   ADA_CLOUD_MODEL   chat model (default qwen2.5:3b)
+#   ADA_CLOUD_MODEL   chat model (default qwen2.5:1.5b)
 #   EMBED_MODEL       embedding model (default nomic-embed-text)
 #   PRESTAGE_MODELS   set to 0 to skip pulling missing weights (default 1)
 #   ADA_AI_BIND_IP    private IP for the readiness shims; read from metadata if unset
@@ -16,7 +16,7 @@ set -euo pipefail
 
 REPO_DIR="${REPO_DIR:-/opt/ada}"
 LOG_FILE="${LOG_FILE:-/var/log/ada-startup-ai.log}"
-ADA_CLOUD_MODEL="${ADA_CLOUD_MODEL:-qwen2.5:3b}"
+ADA_CLOUD_MODEL="${ADA_CLOUD_MODEL:-qwen2.5:1.5b}"
 EMBED_MODEL="${EMBED_MODEL:-nomic-embed-text}"
 PRESTAGE_MODELS="${PRESTAGE_MODELS:-1}"
 COMPOSE_FILE="deploy/ai.compose.yml"
