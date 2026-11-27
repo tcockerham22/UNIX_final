@@ -170,6 +170,7 @@ class Phase7DeploymentTests(unittest.TestCase):
         service = (ROOT / "deploy" / "ada-container-metrics.service").read_text(encoding="utf-8")
         timer = (ROOT / "deploy" / "ada-container-metrics.timer").read_text(encoding="utf-8")
         exporter = (ROOT / "scripts" / "export-container-metrics.sh").read_text(encoding="utf-8")
+        self.assertIn("restart grafana", startup)
         self.assertIn("ada-container-metrics.timer", startup)
         self.assertIn("ada-export-container-metrics", startup)
         self.assertIn("ada_containers_running", exporter)

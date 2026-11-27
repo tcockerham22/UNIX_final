@@ -91,6 +91,8 @@ log "wrote $ENV_FILE (mode 600)"
 log "step 3/4: starting edge containers (ingestion runs conditionally in Compose)"
 docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d --build \
     --scale "ada-web=$ADA_WEB_REPLICAS"
+docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" restart grafana >/dev/null \
+    || log "WARNING: Grafana did not restart with the current provisioning"
 
 if curl -fsS -X POST http://127.0.0.1:9090/-/reload >/dev/null 2>&1; then
     log "reloaded Prometheus rules and scrape config"
