@@ -7,7 +7,7 @@ network_name     = "ada-vpc"
 subnetwork_name  = "ada-subnet"
 subnet_cidr      = "10.10.0.0/24"
 static_ip_name   = "ada-edge-ip-tf"
-router_name      = "ada-nat-router"
+router_name      = "ada-nat-router-tf"
 nat_name         = "ada-nat"
 
 edge_instance_name = "ada-edge-tf"

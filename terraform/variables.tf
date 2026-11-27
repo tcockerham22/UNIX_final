@@ -42,7 +42,7 @@ variable "static_ip_name" {
 variable "router_name" {
   description = "Cloud Router used by the AI VM's Cloud NAT gateway."
   type        = string
-  default     = "ada-nat-router"
+  default     = "ada-nat-router-tf"
 }
 
 variable "nat_name" {
