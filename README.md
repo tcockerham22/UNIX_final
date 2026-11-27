@@ -9,8 +9,8 @@ deployed with one command.
 | Member | Role |
 |---|---|
 | Ty | Project lead + data management (database, ingestion, LVM, tests, report) |
-| _name_ | Infrastructure and automation (Terraform, firewall, secrets, startup script, monitoring) |
-| _name_ | Application deployment (web tier, load balancer, autoscaling, rate limiting) |
+| Frank | Infrastructure and automation (Terraform, firewall, secrets, startup script, monitoring) |
+| Tal | Application deployment (web tier, load balancer, autoscaling, rate limiting) |
 | Connor | AI platform (model, inference replicas, embeddings, AI tests) |
 
 More detail in [docs/roles.md](docs/roles.md). Frank helped with the Phase 6
