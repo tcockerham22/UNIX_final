@@ -191,6 +191,8 @@ class Phase7DeploymentTests(unittest.TestCase):
         self.assertIn("alert: AdaVolumeAbove80", rules)
         self.assertIn("alert: AdaHighErrorRate", rules)
         self.assertIn("/var/lib/grafana/dashboards", provider)
+        self.assertTrue((ROOT / "deploy" / "grafana" / "provisioning" / "plugins").is_dir())
+        self.assertTrue((ROOT / "deploy" / "grafana" / "provisioning" / "alerting").is_dir())
         self.assertEqual(dashboard["uid"], "ada-cloud")
         self.assertTrue(dashboard["panels"])
         self.assertNotIn("uid:", datasource)
