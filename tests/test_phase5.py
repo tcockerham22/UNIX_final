@@ -63,6 +63,17 @@ class Phase5ScriptTests(unittest.TestCase):
         self.assertIn('*@*.gserviceaccount.com) member="serviceAccount:$member"', manager)
         self.assertIn('*@*) member="user:$member"', manager)
 
+    def test_deploy_images_are_consistent(self):
+        compose = (ROOT / "deploy" / "ai.compose.yml").read_text(encoding="utf-8")
+        startup = (ROOT / "scripts" / "startup-ai.sh").read_text(encoding="utf-8")
+        self.assertEqual(compose.count("ollama/ollama:0.40.18"), 2)
+        self.assertIn("ollama/ollama:0.40.18", startup)
+
+    def test_haproxy_dockerfile_uses_repo_relative_copy_paths(self):
+        dockerfile = (ROOT / "deploy" / "haproxy" / "Dockerfile").read_text(encoding="utf-8")
+        self.assertIn("COPY deploy/haproxy/haproxy.cfg.template", dockerfile)
+        self.assertIn("COPY deploy/haproxy/render-and-start.sh", dockerfile)
+
 
 if __name__ == "__main__":
     unittest.main()

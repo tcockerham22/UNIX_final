@@ -66,7 +66,7 @@ SH
         -e OLLAMA_MODELS=/models \
         -e ADA_MODELS="$ADA_CLOUD_MODEL $EMBED_MODEL" \
         -v /models:/models \
-        --entrypoint /bin/sh ollama/ollama:0.13.5 -c "$stage_script"
+        --entrypoint /bin/sh ollama/ollama:0.40.18 -c "$stage_script"
 else
     log "step 2/3: PRESTAGE_MODELS=0, skipping model download"
 fi

@@ -2,7 +2,7 @@ name: ada-ai
 
 services:
   ollama-a:
-    image: ollama/ollama:0.13.5
+    image: ollama/ollama:0.40.18
     environment:
       OLLAMA_HOST: 0.0.0.0:11434
       OLLAMA_MODELS: /models
@@ -20,7 +20,7 @@ services:
           memory: 5G
 
   ollama-b:
-    image: ollama/ollama:0.13.5
+    image: ollama/ollama:0.40.18
     environment:
       OLLAMA_HOST: 0.0.0.0:11434
       OLLAMA_MODELS: /models
