@@ -38,6 +38,7 @@ class Phase5ScriptTests(unittest.TestCase):
             "startup-ai.sh",
             "db-password",
             "grafana-admin-password",
+            "ada-ai-ip",
             "/data/db",
             "/models",
             "lvm-snapshot.sh",
@@ -56,6 +57,11 @@ class Phase5ScriptTests(unittest.TestCase):
         guide = (ROOT / "docs" / "startup.md").read_text(encoding="utf-8")
         self.assertIn("gcloud services enable secretmanager.googleapis.com", manager)
         self.assertIn("gcloud services enable secretmanager.googleapis.com", guide)
+
+    def test_manage_secrets_detects_iam_member_type(self):
+        manager = (ROOT / "scripts" / "manage-secrets.sh").read_text(encoding="utf-8")
+        self.assertIn('*@*.gserviceaccount.com) member="serviceAccount:$member"', manager)
+        self.assertIn('*@*) member="user:$member"', manager)
 
 
 if __name__ == "__main__":

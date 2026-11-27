@@ -20,6 +20,28 @@ startup-script metadata body only needs:
 cd /opt/ada && sudo ./scripts/startup.sh
 ```
 
+Set these instance metadata attributes before first boot:
+
+| Key | `ada-edge` | `ada-ai` |
+|---|---|---|
+| `ada-role` | `edge` | `ai` |
+| `ada-ai-ip` | private IP of `ada-ai` | not needed |
+| `startup-script` | the script above | the script above |
+
+For example, after creating the startup-script body in a local file:
+
+```sh
+gcloud compute instances add-metadata ada-edge --zone=YOUR_ZONE \
+  --metadata=ada-role=edge,ada-ai-ip=10.0.0.3 \
+  --metadata-from-file=startup-script=/tmp/ada-startup.sh
+gcloud compute instances add-metadata ada-ai --zone=YOUR_ZONE \
+  --metadata=ada-role=ai \
+  --metadata-from-file=startup-script=/tmp/ada-startup.sh
+```
+
+The edge script needs `ada-ai-ip` so HAProxy can reach the AI readiness shims;
+it deliberately does not use the edge VM's own address.
+
 ## One-time secret setup
 
 Run this once from a machine with Secret Manager Admin rights, before booting
@@ -36,12 +58,16 @@ Then create and grant access to the secrets:
 ```sh
 ./scripts/manage-secrets.sh ensure db-password
 ./scripts/manage-secrets.sh ensure grafana-admin-password
-./scripts/manage-secrets.sh grant db-password SERVICE_ACCOUNT_EMAIL
-./scripts/manage-secrets.sh grant grafana-admin-password SERVICE_ACCOUNT_EMAIL
+./scripts/manage-secrets.sh grant db-password MEMBER
+./scripts/manage-secrets.sh grant grafana-admin-password MEMBER
 ```
 
-Replace `SERVICE_ACCOUNT_EMAIL` with the real email of each VM's attached
-service account. List them with:
+Replace `MEMBER` with the real email of each VM's attached service account, or
+with your own user email for local testing. The script detects the IAM member
+type automatically: addresses ending in `.gserviceaccount.com` become
+`serviceAccount:...`, other email addresses become `user:...`, and explicit
+prefixes such as `user:`, `serviceAccount:`, `group:`, or `domain:` are kept as
+written. List service accounts with:
 
 ```sh
 gcloud iam service-accounts list --project=YOUR_PROJECT_ID

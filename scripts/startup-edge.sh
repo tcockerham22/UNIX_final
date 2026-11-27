@@ -9,7 +9,7 @@
 #   REPO_DIR               checkout location (default /opt/ada)
 #   DB_PASSWORD            override Secret Manager for local testing
 #   GRAFANA_ADMIN_PASSWORD override Secret Manager for local testing
-#   ADA_AI_PRIVATE_IP      AI VM private IP; read from metadata if unset
+#   ADA_AI_PRIVATE_IP      AI VM private IP; read from metadata attribute ada-ai-ip if unset
 #   DB_SECRET_NAME         default db-password
 #   GRAFANA_SECRET_NAME    default grafana-admin-password
 #   ADA_WEB_REPLICAS       initial replica count (default 3)
@@ -45,8 +45,8 @@ if ! command -v python3 >/dev/null 2>&1; then
     apt-get install -y python3
 fi
 
-ADA_AI_PRIVATE_IP="${ADA_AI_PRIVATE_IP:-$(bash "$REPO_DIR/scripts/gcp-metadata.sh" instance/network-interfaces/0/ip 2>/dev/null || true)}"
-[[ -n "$ADA_AI_PRIVATE_IP" ]] || die "set ADA_AI_PRIVATE_IP (metadata server did not provide a private IP)"
+ADA_AI_PRIVATE_IP="${ADA_AI_PRIVATE_IP:-$(bash "$REPO_DIR/scripts/gcp-metadata.sh" instance/attributes/ada-ai-ip 2>/dev/null || true)}"
+[[ -n "$ADA_AI_PRIVATE_IP" ]] || die "set ADA_AI_PRIVATE_IP or metadata attribute ada-ai-ip to the AI VM's private IP"
 log "inference traffic will go to $ADA_AI_PRIVATE_IP"
 
 log "step 1/4: storage (database only)"

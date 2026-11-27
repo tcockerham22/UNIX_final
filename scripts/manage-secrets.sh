@@ -3,7 +3,7 @@
 #
 #   ./scripts/manage-secrets.sh get NAME                 print the latest value
 #   ./scripts/manage-secrets.sh ensure NAME [VALUE]      create a secret once
-#   ./scripts/manage-secrets.sh grant NAME SERVICE_ACCOUNT
+#   ./scripts/manage-secrets.sh grant NAME MEMBER
 #
 # `ensure` is an operator/setup step: it needs an account that can enable the
 # Secret Manager API and create secrets. `get` only needs
@@ -80,8 +80,13 @@ case "$cmd" in
     grant)
         name="${2:-}"
         member="${3:-}"
-        [[ -n "$name" && -n "$member" ]] || die "usage: grant NAME SERVICE_ACCOUNT"
-        [[ "$member" == serviceAccount:* ]] || member="serviceAccount:$member"
+        [[ -n "$name" && -n "$member" ]] || die "usage: grant NAME MEMBER"
+        case "$member" in
+            user:*|serviceAccount:*|group:*|domain:*|deleted:*) ;;
+            *@*.gserviceaccount.com) member="serviceAccount:$member" ;;
+            *@*) member="user:$member" ;;
+            *) die "member must be an email or a prefixed IAM member (user:, serviceAccount:, group:, domain:)" ;;
+        esac
         gcloud secrets add-iam-policy-binding "$name" \
             --project="$PROJECT_ID" --member="$member" \
             --role=roles/secretmanager.secretAccessor --quiet
