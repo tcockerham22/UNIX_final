@@ -20,6 +20,8 @@ ai_machine_type   = "n2-standard-8"
 source_image      = "ubuntu-os-cloud/ubuntu-2404-lts-amd64"
 
 service_account_id        = "ada-vm"
+db_secret_name            = "ada-db-password"
+grafana_secret_name       = "ada-grafana-admin-password"
 grant_logging_and_metrics = true
 operator_members          = []
 

@@ -8,11 +8,11 @@ locals {
   )
 
   secrets = {
-    "db-password" = {
-      description = "PostgreSQL password for the Ada edge stack."
+    (var.db_secret_name) = {
+      description = "PostgreSQL password for this Terraform-managed Ada edge stack."
     }
-    "grafana-admin-password" = {
-      description = "Initial Grafana admin password for the Ada edge stack."
+    (var.grafana_secret_name) = {
+      description = "Initial Grafana admin password for this Terraform-managed Ada edge stack."
     }
   }
 
@@ -22,6 +22,11 @@ locals {
   startup_script = <<-EOT
     #!/bin/bash
     set -euo pipefail
+
+    if ! command -v git >/dev/null 2>&1; then
+      apt-get update -y
+      apt-get install -y git
+    fi
 
     if [[ ! -d /opt/ada/.git ]]; then
       mkdir -p /opt/ada
@@ -34,7 +39,10 @@ locals {
       git reset --hard FETCH_HEAD || true
     fi
 
-    sudo ./scripts/startup.sh
+    sudo env \
+      DB_SECRET_NAME="${var.db_secret_name}" \
+      GRAFANA_SECRET_NAME="${var.grafana_secret_name}" \
+      ./scripts/startup.sh
   EOT
 }
 
@@ -205,7 +213,7 @@ resource "google_secret_manager_secret" "ada" {
 resource "google_secret_manager_secret_version" "ada" {
   for_each    = google_secret_manager_secret.ada
   secret      = each.value.id
-  secret_data = each.key == "db-password" ? local.db_password : local.grafana_admin_password
+  secret_data = each.key == var.db_secret_name ? local.db_password : local.grafana_admin_password
 
   # Secret Manager is the source of truth after the first version is created.
   lifecycle {

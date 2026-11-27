@@ -10,6 +10,10 @@ Docker pulls and model downloads. The edge VM owns the reserved public address
 and is the only VM exposed on HTTP/80. SSH is limited to the IAP forwarding
 range unless extra CIDRs are added to `ssh_source_ranges`.
 
+This stack uses `ada-db-password` and `ada-grafana-admin-password`, separate
+from the manual deployment's `db-password` and `grafana-admin-password`, so
+applying it cannot overwrite the live secrets.
+
 ## Files
 
 - `versions.tf` - Terraform and provider versions.

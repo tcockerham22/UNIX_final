@@ -293,8 +293,10 @@ unrelated work.
 and IAP SSH firewalls, two VMs with LVM-ready data disks, a least-privilege
 service account, Secret Manager secrets and access grants, and startup-script
 metadata. `terraform/terraform.tfvars.example` is safe to commit; real passwords
-are generated into Secret Manager and never written into tracked files. Frank
-helped with this Phase 6 code.
+are generated into Secret Manager and never written into tracked files. The
+Terraform stack uses `ada-db-password` and `ada-grafana-admin-password`, so it
+does not overwrite the manual deployment's secrets. Frank helped with this
+Phase 6 code.
 
 The configuration has not been applied yet. The existing manual deployment
 still uses the default VPC and the default compute service account, so a

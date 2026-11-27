@@ -198,6 +198,18 @@ variable "labels" {
   default     = {}
 }
 
+variable "db_secret_name" {
+  description = "Secret Manager name for this stack's PostgreSQL password."
+  type        = string
+  default     = "ada-db-password"
+}
+
+variable "grafana_secret_name" {
+  description = "Secret Manager name for this stack's Grafana admin password."
+  type        = string
+  default     = "ada-grafana-admin-password"
+}
+
 variable "db_password" {
   description = "Optional PostgreSQL password. Leave null to generate one in Secret Manager."
   type        = string

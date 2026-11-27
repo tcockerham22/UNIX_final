@@ -50,6 +50,9 @@ class Phase6TerraformTests(unittest.TestCase):
             'resource "google_compute_instance" "ai"',
             'device_name = "data-disk"',
             "metadata_startup_script = local.startup_script",
+            "apt-get install -y git",
+            "DB_SECRET_NAME=",
+            "GRAFANA_SECRET_NAME=",
             "ada-role  = \"edge\"",
             "ada-ai-ip = google_compute_instance.ai.network_interface[0].network_ip",
             "ada-role = \"ai\"",
@@ -68,6 +71,8 @@ class Phase6TerraformTests(unittest.TestCase):
     def test_tfvars_example_contains_no_secrets(self):
         example = (TERRAFORM / "terraform.tfvars.example").read_text(encoding="utf-8")
         self.assertIn('project_id = "ubuntu-server-506716"', example)
+        self.assertIn('db_secret_name            = "ada-db-password"', example)
+        self.assertIn('grafana_secret_name       = "ada-grafana-admin-password"', example)
         self.assertNotIn("db_password =", example)
         self.assertNotIn("grafana_admin_password =", example)
 
