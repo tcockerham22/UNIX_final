@@ -30,6 +30,8 @@ services:
       ADA_DATABASE_URL: ${ADA_DATABASE_URL:?Set ADA_DATABASE_URL}
       ADA_OLLAMA_HOST: http://haproxy:8400
       ADA_CLOUD_MODEL: ${ADA_CLOUD_MODEL:-qwen2.5:1.5b}
+      ADA_NUM_CTX: ${ADA_NUM_CTX:-8192}
+      ADA_LIGHT_MAX_TOKENS: ${ADA_LIGHT_MAX_TOKENS:-4096}
       ADA_WEB_HOST: 0.0.0.0
       ADA_WEB_PORT: "8765"
     depends_on:

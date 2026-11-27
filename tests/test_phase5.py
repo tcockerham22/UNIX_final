@@ -72,6 +72,17 @@ class Phase5ScriptTests(unittest.TestCase):
         self.assertEqual(compose.count('cpus: "4.00"'), 2)
         self.assertEqual(compose.count('OLLAMA_NUM_THREADS: "4"'), 2)
 
+    def test_cloud_response_limits_are_configurable(self):
+        compose = (ROOT / "deploy" / "edge.compose.yml").read_text(encoding="utf-8")
+        startup = (ROOT / "scripts" / "startup-edge.sh").read_text(encoding="utf-8")
+        config = (ROOT / "ada" / "config.py").read_text(encoding="utf-8")
+        self.assertIn("ADA_NUM_CTX: ${ADA_NUM_CTX:-8192}", compose)
+        self.assertIn("ADA_LIGHT_MAX_TOKENS: ${ADA_LIGHT_MAX_TOKENS:-4096}", compose)
+        self.assertIn('ADA_NUM_CTX=%s', startup)
+        self.assertIn('ADA_LIGHT_MAX_TOKENS=%s', startup)
+        self.assertIn("num_ctx: int = 8192", config)
+        self.assertIn("light_max_tokens: int = 4096", config)
+
     def test_haproxy_dockerfile_uses_repo_relative_copy_paths(self):
         dockerfile = (ROOT / "deploy" / "haproxy" / "Dockerfile").read_text(encoding="utf-8")
         self.assertIn("COPY deploy/haproxy/haproxy.cfg.template", dockerfile)

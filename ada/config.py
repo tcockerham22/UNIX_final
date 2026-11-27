@@ -147,11 +147,11 @@ class Config:
     cloud_model: str = "qwen2.5:1.5b"
     ollama_host: str = "http://127.0.0.1:11434"
     database_url: str | None = None
-    num_ctx: int = 4096
+    num_ctx: int = 8192
     temperature: float = 0.7
-    light_max_tokens: int = 220
+    light_max_tokens: int = 4096
     moderate_max_tokens: int = 700
-    quick_max_tokens: int = 220
+    quick_max_tokens: int = 4096
     deep_max_tokens: int = 2048
 
     persona_file: str = str(ASSETS_DIR / "persona.md")

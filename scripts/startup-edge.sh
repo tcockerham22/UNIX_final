@@ -13,6 +13,8 @@
 #   DB_SECRET_NAME         default db-password
 #   GRAFANA_SECRET_NAME    default grafana-admin-password
 #   ADA_WEB_REPLICAS       initial replica count (default 3)
+#   ADA_NUM_CTX            model context window (default 8192)
+#   ADA_LIGHT_MAX_TOKENS   maximum response length (default 4096)
 
 set -euo pipefail
 
@@ -73,6 +75,8 @@ umask 077
 {
     printf 'ADA_AI_PRIVATE_IP=%s\n' "$(env_value "$ADA_AI_PRIVATE_IP")"
     printf 'ADA_CLOUD_MODEL=%s\n' "$(env_value "$ADA_CLOUD_MODEL")"
+    printf 'ADA_NUM_CTX=%s\n' "$(env_value "${ADA_NUM_CTX:-8192}")"
+    printf 'ADA_LIGHT_MAX_TOKENS=%s\n' "$(env_value "${ADA_LIGHT_MAX_TOKENS:-4096}")"
     printf 'POSTGRES_DB=ragdb\n'
     printf 'POSTGRES_USER=raguser\n'
     printf 'POSTGRES_PASSWORD=%s\n' "$(env_value "$db_password")"

@@ -36,6 +36,10 @@ The chat UI sends `POST /api/rag/chat`. Its server-sent events stream retrieved
 source metadata and answer tokens, and save source citations with the chat
 history. `GET /api/rag/status` reports the number of indexed passages.
 
+Cloud responses allow up to `ADA_LIGHT_MAX_TOKENS` tokens (default 4096) inside
+an `ADA_NUM_CTX` context window (default 8192). Set either variable before
+running `scripts/startup-edge.sh` to tune response length versus inference time.
+
 ## Container topology
 
 On `ada-ai`, pre-stage both required Ollama models under the model volume, set
