@@ -23,8 +23,8 @@ is being developed as a separate profile for a university sysadmin project:
 
 Work was initially requested in phases with approval between phases. The owner
 has since asked to proceed through phases 2, 3, and 4 together, and Phase 5 has
-now been added. The status below reflects that scope. Phases 6 and 7 have been
-added; Phases 8–9 have not been implemented.
+now been added. The status below reflects that scope. Phase 7 is complete;
+Phases 8–9 have not been implemented.
 
 ## Current status
 
@@ -37,7 +37,7 @@ added; Phases 8–9 have not been implemented.
 | 4 | HAProxy, rate limiting, Prometheus exporter, web autoscaler | Implemented and running on the edge VM |
 | 5 | LVM, startup scripts, Secret Manager retrieval, snapshots | Implemented and running on the Terraform stack |
 | 6 | Terraform network, firewalls, VMs, disks, service account, secrets | Applied to the parallel `-tf` stack |
-| 7 | Application metrics, alert rules, production Grafana dashboards | Implemented with a live Chat/Metrics tab |
+| 7 | Application metrics, alert rules, production Grafana dashboards | Completed and deployed with a live Chat/Metrics tab |
 | 8 | Smoke, load, failover, and rate-limit test harness | Not implemented |
 | 9 | Demo, full deployment guide, memory worksheet, citations | Not implemented; this file is a status/engineering guide, not the final assignment README |
 
