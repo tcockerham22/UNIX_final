@@ -35,4 +35,6 @@ contains only non-secret infrastructure settings.
 ## Deploy
 
 See [terraform/README.md](terraform/README.md) for the Phase 6 apply sequence
-and [docs/startup.md](docs/startup.md) for the VM boot behavior.
+and [docs/startup.md](docs/startup.md) for the VM boot behavior. The cloud page's
+Metrics tab shows live replica, traffic, latency, resource, volume, and alert
+data from Prometheus.

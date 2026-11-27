@@ -83,6 +83,7 @@ umask 077
     printf 'ADA_DATABASE_URL=%s\n' "$(env_value "$db_url")"
     printf 'GRAFANA_ADMIN_PASSWORD=%s\n' "$(env_value "$grafana_password")"
     printf 'ADA_DB_DATA=%s\n' "$(env_value "${ADA_DB_DATA:-/data/db/pgdata}")"
+    printf 'ADA_PROMETHEUS_URL=%s\n' "$(env_value "${ADA_PROMETHEUS_URL:-http://prometheus:9090}")"
 } > "$ENV_FILE"
 chmod 600 "$ENV_FILE"
 log "wrote $ENV_FILE (mode 600)"
@@ -90,6 +91,12 @@ log "wrote $ENV_FILE (mode 600)"
 log "step 3/4: starting edge containers (ingestion runs conditionally in Compose)"
 docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d --build \
     --scale "ada-web=$ADA_WEB_REPLICAS"
+
+if curl -fsS -X POST http://127.0.0.1:9090/-/reload >/dev/null 2>&1; then
+    log "reloaded Prometheus rules and scrape config"
+else
+    log "WARNING: Prometheus did not reload; it may still be starting"
+fi
 
 log "step 4/4: installing the autoscaler service"
 install -d -m 0755 /etc/ada

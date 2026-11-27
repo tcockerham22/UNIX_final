@@ -1,0 +1,54 @@
+groups:
+  - name: ada-cloud
+    rules:
+      - alert: AdaWebReplicasDown
+        expr: sum(haproxy_server_up{backend="web_pool"}) < 3
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: Fewer than three Ada web replicas are healthy.
+
+      - alert: AdaAiShimsDown
+        expr: sum(haproxy_server_up{backend="ollama_pool"}) < 2
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: One or both private inference endpoints are down.
+
+      - alert: AdaVolumeAbove80
+        expr: |
+          100 * (1 - node_filesystem_avail_bytes{fstype=~"ext4|xfs",mountpoint!~"/boot.*|/run.*|/dev.*"}
+          / node_filesystem_size_bytes{fstype=~"ext4|xfs",mountpoint!~"/boot.*|/run.*|/dev.*"}) > 80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: A mounted volume is more than 80 percent full.
+
+      - alert: AdaHighCpu
+        expr: 100 - avg(rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100 > 80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Edge VM CPU use is above 80 percent.
+
+      - alert: AdaHighMemory
+        expr: 100 * (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) > 80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Edge VM memory use is above 80 percent.
+
+      - alert: AdaHighErrorRate
+        expr: |
+          sum(rate(ada_http_requests_total{status=~"5.."}[5m]))
+          / clamp_min(sum(rate(ada_http_requests_total[5m])), 0.001) > 0.05
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: More than five percent of Ada web requests are failing.

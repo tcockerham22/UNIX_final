@@ -23,8 +23,8 @@ is being developed as a separate profile for a university sysadmin project:
 
 Work was initially requested in phases with approval between phases. The owner
 has since asked to proceed through phases 2, 3, and 4 together, and Phase 5 has
-now been added. The status below reflects that scope. Phase 6 Terraform code
-has been added; Phases 7–9 have not been implemented.
+now been added. The status below reflects that scope. Phases 6 and 7 have been
+added; Phases 8–9 have not been implemented.
 
 ## Current status
 
@@ -35,9 +35,9 @@ has been added; Phases 7–9 have not been implemented.
 | 2 | Corpus, chunking, Ollama embeddings, pgvector retrieval, cited streaming chat | Implemented in this work |
 | 3 | Web, database, inference, readiness shim, and monitoring containers | Implemented and deployed manually |
 | 4 | HAProxy, rate limiting, Prometheus exporter, web autoscaler | Implemented and running on the edge VM |
-| 5 | LVM, startup scripts, Secret Manager retrieval, snapshots | Implemented and running; Terraform apply pending |
-| 6 | Terraform network, firewalls, VMs, disks, service account, secrets | Terraform code added; apply pending |
-| 7 | Application metrics, alert rules, production Grafana dashboards | Partial infrastructure only; not complete |
+| 5 | LVM, startup scripts, Secret Manager retrieval, snapshots | Implemented and running on the Terraform stack |
+| 6 | Terraform network, firewalls, VMs, disks, service account, secrets | Applied to the parallel `-tf` stack |
+| 7 | Application metrics, alert rules, production Grafana dashboards | Implemented with a live Chat/Metrics tab |
 | 8 | Smoke, load, failover, and rate-limit test harness | Not implemented |
 | 9 | Demo, full deployment guide, memory worksheet, citations | Not implemented; this file is a status/engineering guide, not the final assignment README |
 
@@ -250,7 +250,8 @@ installed, the ingestion error will identify that database prerequisite.
 | Path | Purpose |
 |---|---|
 | `ada/config.py` | Profile, local defaults, and environment-driven cloud settings |
-| `ada/web.py` | Local and cloud HTTP handlers, chat routes, streaming SSE, uploads |
+| `ada/web.py` | Local and cloud HTTP handlers, chat routes, streaming SSE, uploads, summary metrics |
+| `ada/metrics.py`, `ada/monitoring.py` | Internal Prometheus counters and the cloud metrics summary |
 | `ada/cloud_state.py` | PostgreSQL chat history, memories, uploads, and citations |
 | `ada/documents.py` | Readable-text, `.docx`, and `.pdf` extraction (pypdf with `pdftotext` fallback) |
 | `ada/rag.py` | Markdown chunking, Ollama embeddings, pgvector schema and retrieval |
@@ -271,16 +272,18 @@ installed, the ingestion error will identify that database prerequisite.
 | `deploy/haproxy/` | Public web and private inference routing |
 | `deploy/autoscaler.py` | HAProxy-driven 3–6 web replica scaling |
 | `deploy/ada-autoscaler.service` | systemd unit for the autoscaler |
-| `deploy/prometheus.yml` | Initial host/container/HAProxy scrape targets |
+| `deploy/prometheus.yml` | Host, container, HAProxy, and Ada web scrape targets |
+| `deploy/prometheus/rules/ada.rules.yml` | Replica, volume, resource, and error-rate alerts |
+| `deploy/grafana/provisioning/`, `deploy/grafana/dashboards/` | Prometheus datasource and the Ada Cloud dashboard |
 | `tests/test_rag.py`, `tests/test_deploy.py`, `tests/test_phase5.py` | RAG, deployment, and boot-script checks |
 
 ## Validation and repository state
 
 The project test suite covers the existing local behavior and the cloud profile,
 RAG chunking/IDs/embeddings/retrieval, source-stream persistence, the readiness
-probe, autoscaler decisions, and static checks for the Phase 5 boot scripts. The
-Compose files are checked with `docker compose config`; Python, JavaScript, and
-shell syntax are checked separately.
+probe, autoscaler decisions, Phase 5 boot scripts, and Phase 6/7 infrastructure
+and metrics. The Compose files are checked with `docker compose config`; Python,
+JavaScript, and shell syntax are checked separately.
 
 The repository already had unrelated uncommitted changes before phases 2–4.
 Those changes have been preserved. No GitHub push has been made, and no
@@ -298,21 +301,28 @@ Terraform stack uses `ada-db-password` and `ada-grafana-admin-password`, so it
 does not overwrite the manual deployment's secrets. Frank helped with this
 Phase 6 code.
 
-The configuration has not been applied yet. The existing manual deployment
-still uses the default VPC and the default compute service account, so a
-Terraform apply creates a parallel stack with the `-tf` names in the example
-tfvars. See [terraform/README.md](terraform/README.md) for import notes and the
-apply sequence.
+The configuration has been applied as a parallel stack using the `-tf` names in
+the example tfvars. The old manual VMs on the default VPC are stopped, and the
+live chat URL is the Terraform edge VM's reserved address. See
+[terraform/README.md](terraform/README.md) for import notes and the apply
+sequence.
 
 ## Remaining phases
 
 ### Phase 7: observability
 
-The initial Prometheus, Grafana, node-exporter, cAdvisor, and HAProxy exporter
-containers exist. Still needed: Ada application request/error/latency metrics,
-time-to-first-token and tokens-per-second metrics, per-volume metrics and
-dashboards, provisioning improvements, and alerts for replica health and
-volumes above 80%.
+Prometheus, Grafana, node-exporter, cAdvisor, and the HAProxy exporter now feed
+a Chat/Metrics tab on the cloud page. Ada web replicas expose request count,
+request latency, first-token latency, output-token count, and generation outcome
+metrics on their internal `/metrics` endpoint. HAProxy blocks that raw endpoint
+from the public listener, while the public `/api/metrics` endpoint returns only
+a safe summary for the page.
+
+The tab shows replica and inference health, edge request/error rates, response
+and first-token latency, tokens per second, CPU, memory, container count, RAG
+chunk count, volume use, scrape targets, and firing alerts. Prometheus rules
+cover replica health, AI shims, volumes above 80%, CPU, memory, and Ada 5xx
+rates. Grafana provisioning adds an `Ada Cloud` dashboard with the same signals.
 
 ### Phase 8: test harness
 

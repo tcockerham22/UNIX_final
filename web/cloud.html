@@ -49,8 +49,15 @@
           <p class="panel-eyebrow">Conversation</p>
           <h2 class="panel-title">Chat with Ada</h2>
         </div>
+        <div class="view-tabs" role="tablist" aria-label="Ada views">
+          <button class="view-tab is-active" id="chat-tab" type="button" role="tab"
+            aria-selected="true" aria-controls="chat-view" data-view="chat">Chat</button>
+          <button class="view-tab" id="metrics-tab" type="button" role="tab"
+            aria-selected="false" aria-controls="metrics-view" data-view="metrics">Metrics</button>
+        </div>
       </header>
 
+      <div class="chat-view" id="chat-view" role="tabpanel" aria-labelledby="chat-tab">
       <div class="conversation-wrap">
         <div class="conversation" id="conversation" aria-live="polite" aria-relevant="additions text">
           <div class="empty-state" id="empty-state">
@@ -104,6 +111,95 @@
         </div>
       </form>
       <footer>Inference runs on self-hosted Ollama. Do not enter sensitive information.</footer>
+      </div>
+
+      <section class="metrics-view" id="metrics-view" role="tabpanel" aria-labelledby="metrics-tab" hidden>
+        <div class="metrics-toolbar">
+          <div>
+            <p class="panel-eyebrow">Live system</p>
+            <h2 class="panel-title">Service metrics</h2>
+          </div>
+          <button class="secondary-button" id="metrics-refresh" type="button">Refresh</button>
+        </div>
+        <p class="metrics-updated" id="metrics-updated" role="status">Loading metrics...</p>
+        <p class="metrics-error" id="metrics-error" role="alert" hidden></p>
+
+        <div class="metrics-grid">
+          <article class="metric-card">
+            <span class="metric-label">Web replicas</span>
+            <strong id="metric-web-replicas">—</strong>
+            <small>healthy out of six possible</small>
+          </article>
+          <article class="metric-card">
+            <span class="metric-label">AI shims</span>
+            <strong id="metric-ai-shims">—</strong>
+            <small>healthy Ollama endpoints</small>
+          </article>
+          <article class="metric-card">
+            <span class="metric-label">Requests</span>
+            <strong id="metric-requests">—</strong>
+            <small>per second at the edge</small>
+          </article>
+          <article class="metric-card">
+            <span class="metric-label">5xx responses</span>
+            <strong id="metric-errors">—</strong>
+            <small>per second at the edge</small>
+          </article>
+          <article class="metric-card">
+            <span class="metric-label">Avg response</span>
+            <strong id="metric-latency">—</strong>
+            <small>HAProxy backend average</small>
+          </article>
+          <article class="metric-card">
+            <span class="metric-label">App p95</span>
+            <strong id="metric-app-latency">—</strong>
+            <small>web request latency</small>
+          </article>
+          <article class="metric-card">
+            <span class="metric-label">First token</span>
+            <strong id="metric-first-token">—</strong>
+            <small>p95 streamed response</small>
+          </article>
+          <article class="metric-card">
+            <span class="metric-label">Tokens / sec</span>
+            <strong id="metric-tokens">—</strong>
+            <small>streamed generation rate</small>
+          </article>
+          <article class="metric-card">
+            <span class="metric-label">CPU</span>
+            <strong id="metric-cpu">—</strong>
+            <small>edge VM utilization</small>
+          </article>
+          <article class="metric-card">
+            <span class="metric-label">Memory</span>
+            <strong id="metric-memory">—</strong>
+            <small>edge VM utilization</small>
+          </article>
+          <article class="metric-card">
+            <span class="metric-label">Containers</span>
+            <strong id="metric-containers">—</strong>
+            <small>running on the edge VM</small>
+          </article>
+          <article class="metric-card">
+            <span class="metric-label">RAG chunks</span>
+            <strong id="metric-rag">—</strong>
+            <small>indexed document passages</small>
+          </article>
+        </div>
+
+        <section class="metrics-section">
+          <h3>Services</h3>
+          <div class="metrics-list" id="service-list"><p class="metrics-empty">No scrape targets found.</p></div>
+        </section>
+        <section class="metrics-section">
+          <h3>Volumes</h3>
+          <div class="metrics-list" id="disk-list"><p class="metrics-empty">No volumes found.</p></div>
+        </section>
+        <section class="metrics-section">
+          <h3>Active alerts</h3>
+          <div class="metrics-list" id="alert-list"><p class="metrics-empty">No alerts firing.</p></div>
+        </section>
+      </section>
     </section>
   </main>
   <script src="/cloud.js" defer></script>

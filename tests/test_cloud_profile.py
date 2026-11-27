@@ -174,6 +174,19 @@ class CloudWebTests(unittest.TestCase):
         self.assertEqual(result, {"ok": True})
         self.assertEqual(headers["X-Served-By"], os.uname().nodename)
 
+    def test_metrics_endpoints_are_available(self):
+        summary = {"ok": True, "web_replicas": 3, "services": [], "disks": [], "alerts": []}
+        with patch("ada.web.monitoring.collect", return_value=summary) as collect:
+            status, _headers, result = self.request("GET", "/api/metrics")
+        self.assertEqual(status, 200)
+        self.assertEqual(result, summary)
+        collect.assert_called_once_with(self.config)
+
+        status, headers, exposition = self.request("GET", "/metrics")
+        self.assertEqual(status, 200)
+        self.assertIn("text/plain", headers["Content-Type"])
+        self.assertIn(b"ada_http_requests_total", exposition)
+
     def test_cloud_root_does_not_serve_local_display_pages(self):
         status, _headers, page = self.request("GET", "/")
         self.assertEqual(status, 200)

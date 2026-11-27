@@ -147,6 +147,7 @@ class Config:
     cloud_model: str = "qwen2.5:1.5b"
     ollama_host: str = "http://127.0.0.1:11434"
     database_url: str | None = None
+    prometheus_url: str = "http://127.0.0.1:9090"
     num_ctx: int = 8192
     temperature: float = 0.7
     light_max_tokens: int = 4096

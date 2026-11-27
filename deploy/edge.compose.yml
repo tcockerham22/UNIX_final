@@ -34,6 +34,7 @@ services:
       ADA_LIGHT_MAX_TOKENS: ${ADA_LIGHT_MAX_TOKENS:-4096}
       ADA_WEB_HOST: 0.0.0.0
       ADA_WEB_PORT: "8765"
+      ADA_PROMETHEUS_URL: ${ADA_PROMETHEUS_URL:-http://prometheus:9090}
     depends_on:
       postgres:
         condition: service_healthy
@@ -42,6 +43,7 @@ services:
     networks:
       - app
       - database
+      - monitoring
     restart: unless-stopped
     deploy:
       resources:
@@ -112,6 +114,7 @@ services:
       - --web.enable-lifecycle
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/rules:/etc/prometheus/rules:ro
       - prometheus-data:/prometheus
     ports:
       - "127.0.0.1:9090:9090"
@@ -133,6 +136,7 @@ services:
     volumes:
       - grafana-data:/var/lib/grafana
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
     ports:
       - "127.0.0.1:3000:3000"
     networks:

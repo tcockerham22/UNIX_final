@@ -16,12 +16,142 @@ const uploadsPopover = document.getElementById("uploads-popover");
 const uploadStatus = document.getElementById("upload-status");
 const uploadList = document.getElementById("upload-list");
 const uploadCount = document.getElementById("upload-count");
+const chatTab = document.getElementById("chat-tab");
+const metricsTab = document.getElementById("metrics-tab");
+const chatView = document.getElementById("chat-view");
+const metricsView = document.getElementById("metrics-view");
+const metricsRefresh = document.getElementById("metrics-refresh");
+const metricsUpdated = document.getElementById("metrics-updated");
+const metricsError = document.getElementById("metrics-error");
 const maxUploadBytes = 25 * 1024 * 1024;
+let metricsTimer = null;
 const sameOriginFetch = { credentials: "same-origin" };
 let orbState = "idle";
 let orbDetail = "ready when you are";
 let orbKnowledge = { memories: 0, skills: 0, uploads: 0, sources: 0, connections: 0 };
 let orbLearningTimer = null;
+
+function metricText(value, digits = 1) {
+  if (value === null || value === undefined) return "—";
+  const number = Number(value);
+  if (!Number.isFinite(number)) return "—";
+  return number.toFixed(digits).replace(/\.0+$/, "");
+}
+
+function secondsText(value, digits = 1) {
+  if (value === null || value === undefined) return "—";
+  return `${metricText(Number(value) * 1000, digits === 0 ? 0 : digits)} ms`;
+}
+
+function bytesText(value) {
+  if (value === null || value === undefined) return "unknown free";
+  return `${metricText(Number(value) / 1024 ** 3, 1)} GiB free`;
+}
+
+function renderMetricRows(container, rows) {
+  container.replaceChildren();
+  if (!rows.length) {
+    const empty = document.createElement("p");
+    empty.className = "metrics-empty";
+    empty.textContent = "Nothing to report.";
+    container.append(empty);
+    return;
+  }
+  for (const row of rows) {
+    const item = document.createElement("div");
+    item.className = "metrics-row";
+    const main = document.createElement("div");
+    const label = document.createElement("div");
+    label.className = "metrics-row-main";
+    label.textContent = row.label;
+    const detail = document.createElement("div");
+    detail.className = "metrics-row-detail";
+    detail.textContent = row.detail || "";
+    main.append(label, detail);
+    const value = document.createElement("span");
+    value.className = row.warning ? "metrics-row-value is-warning" : "metrics-row-value";
+    value.textContent = row.value;
+    item.append(main, value);
+    container.append(item);
+  }
+}
+
+function renderMetrics(data) {
+  document.getElementById("metric-web-replicas").textContent = metricText(data.web_replicas, 0);
+  document.getElementById("metric-ai-shims").textContent = metricText(data.ai_shims, 0);
+  document.getElementById("metric-requests").textContent = metricText(data.requests_per_second, 2);
+  document.getElementById("metric-errors").textContent = metricText(data.errors_per_second, 2);
+  document.getElementById("metric-latency").textContent = secondsText(data.average_response_seconds, 0);
+  document.getElementById("metric-app-latency").textContent = secondsText(data.app_latency_p95_seconds, 0);
+  document.getElementById("metric-first-token").textContent = secondsText(data.first_token_p95_seconds, 0);
+  document.getElementById("metric-tokens").textContent = metricText(data.tokens_per_second, 1);
+  document.getElementById("metric-cpu").textContent = `${metricText(data.cpu_percent, 0)}%`;
+  document.getElementById("metric-memory").textContent = `${metricText(data.memory_percent, 0)}%`;
+  document.getElementById("metric-containers").textContent = metricText(data.containers_running, 0);
+  document.getElementById("metric-rag").textContent = metricText(data.rag_chunks, 0);
+
+  metricsError.hidden = Boolean(data.ok);
+  metricsError.textContent = data.ok ? "" : (data.error || "Metrics are unavailable.");
+  metricsUpdated.textContent = data.ok
+    ? `Updated ${new Date(data.generated_at).toLocaleTimeString()}`
+    : "Waiting for Prometheus";
+
+  renderMetricRows(
+    document.getElementById("service-list"),
+    (data.services || []).map((service) => ({
+      label: service.name,
+      detail: service.instance,
+      value: service.up ? "Up" : "Down",
+      warning: !service.up,
+    })),
+  );
+  renderMetricRows(
+    document.getElementById("disk-list"),
+    (data.disks || []).map((disk) => ({
+      label: disk.mountpoint,
+      detail: bytesText(disk.available_bytes),
+      value: `${metricText(disk.used_percent, 0)}% used`,
+      warning: Number(disk.used_percent) >= 80,
+    })),
+  );
+  renderMetricRows(
+    document.getElementById("alert-list"),
+    (data.alerts || []).map((alert) => ({
+      label: alert.name,
+      detail: alert.summary,
+      value: alert.state,
+      warning: true,
+    })),
+  );
+}
+
+async function loadMetrics() {
+  metricsUpdated.textContent = "Loading metrics...";
+  try {
+    const response = await fetch("/api/metrics", { ...sameOriginFetch, cache: "no-store" });
+    renderMetrics(await readJsonResponse(response));
+  } catch (error) {
+    metricsError.hidden = false;
+    metricsError.textContent = error.message || "Metrics could not be loaded.";
+    metricsUpdated.textContent = "Metrics unavailable";
+  }
+}
+
+function setView(view) {
+  const showMetrics = view === "metrics";
+  chatView.hidden = showMetrics;
+  metricsView.hidden = !showMetrics;
+  chatTab.classList.toggle("is-active", !showMetrics);
+  metricsTab.classList.toggle("is-active", showMetrics);
+  chatTab.setAttribute("aria-selected", String(!showMetrics));
+  metricsTab.setAttribute("aria-selected", String(showMetrics));
+  window.clearInterval(metricsTimer);
+  metricsTimer = null;
+  if (showMetrics) {
+    loadMetrics();
+    metricsTimer = window.setInterval(loadMetrics, 15000);
+  }
+}
 
 function scrollToBottom() {
   conversation.scrollTop = conversation.scrollHeight;
@@ -357,6 +487,10 @@ function toggleUploadsPopover(forceOpen) {
   uploadsPopover.hidden = !isOpen;
   filesToggle.setAttribute("aria-expanded", String(isOpen));
 }
+
+chatTab.addEventListener("click", () => setView("chat"));
+metricsTab.addEventListener("click", () => setView("metrics"));
+metricsRefresh.addEventListener("click", loadMetrics);
 
 uploadButton.addEventListener("click", () => uploadFile.click());
 uploadFile.addEventListener("change", uploadSelectedFiles);

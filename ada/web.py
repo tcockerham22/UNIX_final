@@ -27,6 +27,7 @@ from .cloud_state import PostgresMemory, PostgresState
 from .config import ROOT, Config
 from .documents import extract_document_text
 from .events import bus, emit
+from . import metrics, monitoring
 from .memory import Memory
 from .rag import PostgresRAG
 from .skills import SkillStore
@@ -310,6 +311,24 @@ class DashboardHandler(BaseHTTPRequestHandler):
     def log_message(self, *args) -> None:
         pass
 
+    def send_response(self, code: int, message=None) -> None:
+        self._response_status = code
+        super().send_response(code, message)
+
+    def _measure(self, dispatch) -> None:
+        """Time a request and record it without changing handler behavior."""
+        started = time.monotonic()
+        self._response_status = 0
+        try:
+            dispatch()
+        finally:
+            metrics.observe_request(
+                self.command,
+                urlparse(self.path).path,
+                self._response_status,
+                time.monotonic() - started,
+            )
+
     @property
     def config(self) -> Config:
         return cast(DashboardHTTPServer, self.server).config
@@ -336,6 +355,9 @@ class DashboardHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_GET(self) -> None:
+        self._measure(self._dispatch_get)
+
+    def _dispatch_get(self) -> None:
         path = urlparse(self.path).path
         if self.config.profile == "cloud":
             self._handle_cloud_get(path)
@@ -354,6 +376,10 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 knowledge_snapshot(session_id),
                 headers={"Set-Cookie": self._session_cookie(session_id)},
             )
+        elif path == "/api/metrics":
+            self._send_json(monitoring.collect(self.config))
+        elif path == "/metrics":
+            self._send_prometheus_metrics()
         elif path in STATIC_FILES:
             name, content_type = STATIC_FILES[path]
             self._send_file(WEB_DIR / name, content_type)
@@ -374,6 +400,10 @@ class DashboardHandler(BaseHTTPRequestHandler):
                     head=True,
                     headers={"Set-Cookie": self._session_cookie(session_id)},
                 )
+            elif path == "/api/metrics":
+                self._send_json(monitoring.collect(self.config), head=True)
+            elif path == "/metrics":
+                self._send_prometheus_metrics(head=True)
             elif path in STATIC_FILES and path in {
                 "/cloud.css", "/cloud.js", "/cloud-orb.html",
                 "/cloud-orb.css", "/style.css", "/app.js",
@@ -396,6 +426,10 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 head=True,
                 headers={"Set-Cookie": self._session_cookie(session_id)},
             )
+        elif path == "/api/metrics":
+            self._send_json(monitoring.collect(self.config), head=True)
+        elif path == "/metrics":
+            self._send_prometheus_metrics(head=True)
         elif path in STATIC_FILES:
             name, content_type = STATIC_FILES[path]
             self._send_file(WEB_DIR / name, content_type, head=True)
@@ -409,6 +443,9 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self.send_error(404)
 
     def do_POST(self) -> None:
+        self._measure(self._dispatch_post)
+
+    def _dispatch_post(self) -> None:
         path = urlparse(self.path).path
         if self.config.profile == "cloud":
             if path == "/api/chat":
@@ -448,6 +485,10 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 knowledge_snapshot(session_id),
                 headers={"Set-Cookie": self._session_cookie(session_id)},
             )
+        elif path == "/api/metrics":
+            self._send_json(monitoring.collect(self.config))
+        elif path == "/metrics":
+            self._send_prometheus_metrics()
         else:
             self.send_error(404)
 
@@ -703,6 +744,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self._send_chat_json({"ok": True, "answer": answer}, session_id)
             return
         messages = [{"role": "system", "content": system_prompt}, *history, {"role": "user", "content": question}]
+        chat_started = time.monotonic()
         try:
             client = ollama.Client(host=self.config.ollama_host)
             schemas = tool_mod.available_tools(self.config)
@@ -765,6 +807,13 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 raise RuntimeError("The inference service returned an empty answer.")
         except Exception:
             LOGGER.exception("Cloud inference request failed")
+            metrics.observe_chat(
+                "direct",
+                first_token_seconds=None,
+                tokens=0,
+                generation_seconds=time.monotonic() - chat_started,
+                success=False,
+            )
             self._send_chat_json(
                 {
                     "ok": False,
@@ -784,7 +833,21 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 session_id,
                 status=503,
             )
+            metrics.observe_chat(
+                "direct",
+                first_token_seconds=None,
+                tokens=len(answer.split()),
+                generation_seconds=time.monotonic() - chat_started,
+                success=False,
+            )
             return
+        metrics.observe_chat(
+            "direct",
+            first_token_seconds=None,
+            tokens=len(answer.split()),
+            generation_seconds=time.monotonic() - chat_started,
+            success=True,
+        )
         self._send_chat_json({"ok": True, "answer": answer}, session_id)
 
     def _handle_cloud_rag_chat(self) -> None:
@@ -948,6 +1011,9 @@ class DashboardHandler(BaseHTTPRequestHandler):
 
         answer_parts = []
         first_token = True
+        first_token_at = None
+        token_count = 0
+        stream_started = time.monotonic()
         try:
             self._send_sse_event("sources", sources)
             self._send_sse_event(
@@ -1005,6 +1071,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 content = message.get("content", "") if isinstance(message, dict) else message.content
                 if content:
                     if first_token:
+                        first_token_at = time.monotonic()
                         self._send_sse_event(
                             "stage",
                             {
@@ -1015,6 +1082,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
                             },
                         )
                         first_token = False
+                    token_count += 1
                     answer_parts.append(str(content))
                     self._send_sse_event("token", str(content))
 
@@ -1041,8 +1109,22 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 },
             )
             self._send_sse_event("done", {"answer": answer, "sources": sources})
+            metrics.observe_chat(
+                "rag",
+                first_token_seconds=(first_token_at - stream_started) if first_token_at else None,
+                tokens=token_count,
+                generation_seconds=time.monotonic() - stream_started,
+                success=True,
+            )
         except Exception:
             LOGGER.exception("Cloud RAG stream failed")
+            metrics.observe_chat(
+                "rag",
+                first_token_seconds=(first_token_at - stream_started) if first_token_at else None,
+                tokens=token_count,
+                generation_seconds=time.monotonic() - stream_started,
+                success=False,
+            )
             self._send_sse_event(
                 "error",
                 {"error": "Ada's AI service is temporarily unavailable. Please try again."},
@@ -1062,6 +1144,9 @@ class DashboardHandler(BaseHTTPRequestHandler):
 
         answer_parts = []
         first_token = True
+        first_token_at = None
+        token_count = 0
+        stream_started = time.monotonic()
         try:
             self._send_sse_event("sources", [])
             self._send_sse_event(
@@ -1124,6 +1209,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 content = message.get("content", "") if isinstance(message, dict) else message.content
                 if content:
                     if first_token:
+                        first_token_at = time.monotonic()
                         self._send_sse_event(
                             "stage",
                             {
@@ -1134,6 +1220,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
                             },
                         )
                         first_token = False
+                    token_count += 1
                     answer_parts.append(str(content))
                     self._send_sse_event("token", str(content))
 
@@ -1160,8 +1247,22 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 },
             )
             self._send_sse_event("done", {"answer": answer, "sources": []})
+            metrics.observe_chat(
+                "quick",
+                first_token_seconds=(first_token_at - stream_started) if first_token_at else None,
+                tokens=token_count,
+                generation_seconds=time.monotonic() - stream_started,
+                success=True,
+            )
         except Exception:
             LOGGER.exception("Cloud quick reply failed")
+            metrics.observe_chat(
+                "quick",
+                first_token_seconds=(first_token_at - stream_started) if first_token_at else None,
+                tokens=token_count,
+                generation_seconds=time.monotonic() - stream_started,
+                success=False,
+            )
             self._send_sse_event(
                 "error",
                 {"error": "Ada's AI service is temporarily unavailable. Please try again."},
@@ -1232,6 +1333,17 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self.wfile.write(body)
         except (BrokenPipeError, ConnectionResetError, OSError):
             self.close_connection = True
+
+    def _send_prometheus_metrics(self, head: bool = False) -> None:
+        """Expose this replica's counters on the internal Docker network."""
+        body = metrics.render().encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        if not head:
+            self._write_body(body)
 
     def _send_json(
         self,
