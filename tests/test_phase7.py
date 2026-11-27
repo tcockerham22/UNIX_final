@@ -155,7 +155,7 @@ class Phase7DeploymentTests(unittest.TestCase):
         self.assertIn("ADA_PROMETHEUS_URL: ${ADA_PROMETHEUS_URL:-http://prometheus:9090}", compose)
         self.assertIn("./prometheus/rules:/etc/prometheus/rules:ro", compose)
         self.assertIn("./grafana/dashboards:/var/lib/grafana/dashboards:ro", compose)
-        self.assertIn("acl raw_metrics path_eq /metrics", haproxy)
+        self.assertIn("acl raw_metrics path /metrics", haproxy)
         self.assertIn("http-request deny deny_status 403 if raw_metrics", haproxy)
 
         ada_web = compose.split("\n  ada-web:", 1)[1].split("\n  postgres:", 1)[0]

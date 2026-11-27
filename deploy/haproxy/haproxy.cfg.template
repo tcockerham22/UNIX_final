@@ -17,7 +17,7 @@ frontend public_http
     bind :80
     stick-table type ip size 100k expire 10s store http_req_rate(10s)
     acl ai_request path_beg /api/chat /api/rag/chat
-    acl raw_metrics path_eq /metrics
+    acl raw_metrics path /metrics
     http-request track-sc0 src if ai_request
     http-request deny deny_status 429 if ai_request { sc_http_req_rate(0) gt ${ADA_AI_RATE_LIMIT} }
     http-request deny deny_status 403 if raw_metrics
