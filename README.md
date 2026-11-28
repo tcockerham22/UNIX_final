@@ -20,11 +20,13 @@ Terraform code.
 
 - `terraform/` - Phase 6 infrastructure code
 - `deploy/` - Docker Compose and load balancer files
-- `scripts/` - LVM, snapshot, ingestion and deploy scripts
-- `db/` - database schema
-- `data/docs/` - documents the RAG app searches
+- `scripts/` - LVM, snapshot, startup and deploy scripts
+- `corpus/`, `assets/skills/` - documents the RAG app searches
 - `tests/` - test scripts; logs go in `tests/results/`
 - `docs/` - roles, integration notes, report material
+- `compose/`, `db/`, `data/docs/` - a standalone test database from before the
+  app existed; not used by the deployed system (see
+  [docs/INTEGRATION.md](docs/INTEGRATION.md))
 
 ## Secrets
 

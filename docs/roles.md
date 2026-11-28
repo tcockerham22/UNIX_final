@@ -16,10 +16,11 @@ repo.
 
 ## What members need from each other
 
-- Member 1 provides `scripts/setup-lvm.sh`, the database Compose service,
-  `scripts/ingest.py`, and the `/data/db` and `/models` volumes.
-- Member 2 calls Member 1's deploy script from the startup script (see
-  `docs/INTEGRATION.md`).
-- Member 4 provides the embedding endpoint used by ingestion and the RAG
-  query service.
-- Member 3 puts the web services on the same Docker network as the database.
+- Ty provides `scripts/setup-lvm.sh` (the `/data/db` and `/models` volumes),
+  `scripts/lvm-snapshot.sh`, the persistence and smoke tests, and the test logs.
+- Frank's Terraform and startup scripts call `setup-lvm.sh`, attach the data
+  disks, and wire Secret Manager (see `docs/startup.md`).
+- Tal's web tier, HAProxy, and autoscaler live in `deploy/edge.compose.yml`
+  and share the `database` network with the `postgres` service.
+- Connor provides the embedding and chat models, the inference replicas, and
+  the RAG code used for ingestion and retrieval (`ada/rag.py`, `ingest/ingest.py`).
