@@ -15,7 +15,8 @@ set -euo pipefail
 VG_NAME="${VG_NAME:-vg_data}"
 LV_DB_NAME="${LV_DB_NAME:-lv_db}"
 SNAP_MOUNT="${SNAP_MOUNT:-/mnt/snap}"
-DB_CONTAINER="${DB_CONTAINER:-rag-db}"
+# Matches by name, so it finds the edge stack's container (ada-edge-postgres-1).
+DB_CONTAINER="${DB_CONTAINER:-postgres}"
 
 die() { echo "[lvm-snapshot] ERROR: $*" >&2; exit 1; }
 [[ $EUID -eq 0 ]] || die "run as root (sudo)"
@@ -26,8 +27,11 @@ case "$cmd" in
         size="${2:-2G}"
         name="${LV_DB_NAME}_snap_$(date +%Y%m%d_%H%M%S)"
         # Best effort: flush PostgreSQL's dirty buffers so recovery is minimal.
-        if command -v docker >/dev/null 2>&1 && docker ps --format '{{.Names}}' | grep -qx "$DB_CONTAINER"; then
-            docker exec "$DB_CONTAINER" psql -U raguser -d ragdb -c "CHECKPOINT;" >/dev/null || true
+        if command -v docker >/dev/null 2>&1; then
+            db_id="$(docker ps -q --filter "name=${DB_CONTAINER}" | head -n 1)"
+            if [[ -n "$db_id" ]]; then
+                docker exec "$db_id" sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "CHECKPOINT;"' >/dev/null || true
+            fi
         fi
         lvcreate --snapshot --size "$size" --name "$name" "/dev/$VG_NAME/$LV_DB_NAME"
         echo "created snapshot $name"
